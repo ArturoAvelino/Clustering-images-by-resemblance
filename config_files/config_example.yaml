@@ -1,0 +1,48 @@
+# Example configuration for the clustering pipeline.
+# This YAML is the source of truth for configuration.
+# Keys map 1:1 to the pipeline configuration fields.
+
+# Path to the folder containing the input images to cluster.
+# Images are expected to be JPG/JPEG/PNG files.
+cropped_images_dir: "/path/to/images"
+
+# Directory where outputs (embeddings, clusters.csv, etc.) will be written.
+output_dir: "path/to/outputs/like/embeddings,/clusters.csv,/etc,/will/be/written"
+
+# Optional local clone path for the DINOv2 repo to avoid network downloads.
+# If omitted, torch.hub will fetch from GitHub on first run.
+model_repo: "path/to/dinov2/"
+
+# Minimum image file size (KB) to include; set to 0 or omit to disable.
+image_size_in_kbytes_min: 10
+
+# Maximum image file size (KB) to include; omit to disable.
+image_size_in_kbytes_max: 99.99
+
+# Background RGB color used for auto-crop thresholding.
+# Format is [R, G, B] with 0-255 values.
+background_color: [45, 71, 159]
+
+# Weight applied to the size feature when clustering.
+# 0.0 disables the size feature; higher values make size more influential.
+size_feature_weight: 0.0
+
+# Batch size used when embedding images with DINOv2.
+batch_size: 16
+
+# Number of data-loading worker processes for embedding.
+num_workers: 2
+
+# Target dimensionality for UMAP reduction.
+umap_dim: 30
+
+# Minimum cluster size for HDBSCAN (smaller values produce more clusters).
+hdb_min_cluster_size: 25
+
+# Enable the two-pass pipeline that refines uncertain samples.
+# If false, a single pass is run.
+two_pass: true
+
+# Enable automatic cropping of background-colored margins.
+# Set to false if backgrounds are not consistent or if crops are already tight.
+autocrop: false

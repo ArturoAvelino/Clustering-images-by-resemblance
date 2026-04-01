@@ -1,0 +1,8 @@
+torch
+torchvision
+umap-learn
+hdbscan
+pillow
+numpy
+certifi
+PyYAML

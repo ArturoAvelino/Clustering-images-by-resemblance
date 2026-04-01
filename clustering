@@ -1,0 +1,42 @@
+from __future__ import annotations
+
+"""
+CLI entry point for the clustering pipeline.
+
+Usage:
+  python clustering compute-clusters --input-dir /path/to/images --output-dir /path/to/output
+  python clustering compute-clusters --config /path/to/config.yaml
+"""
+
+import sys
+
+from pipeline.cli import main as _pipeline_main
+
+
+def _print_top_level_help() -> None:
+    print(
+        "Usage:\n"
+        "  python clustering compute-clusters [options]\n\n"
+        "Run `python clustering compute-clusters --help` for all pipeline options."
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+
+    if not argv or argv[0] in {"-h", "--help"}:
+        _print_top_level_help()
+        return 0
+
+    command, *rest = argv
+    if command != "compute-clusters":
+        print(f"Unknown command: {command}", file=sys.stderr)
+        _print_top_level_help()
+        return 2
+
+    return _pipeline_main(rest, prog="python clustering compute-clusters")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

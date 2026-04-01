@@ -1,0 +1,207 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import List
+
+import numpy as np
+
+from .algorithms import HDBSCANClusterer, UMAPReducer
+from .config import ClusterResult, PipelineConfig, StagePaths, make_fast_config
+from .data import ImageDataset, ImageIndex, compute_size_features
+from .embedding import DINOv2Embedder, ensure_deps, resolve_device
+from .model_repo import auto_model_repo
+from .ssl_utils import configure_ssl
+from .summary import summarize_clusters_csv
+
+
+def stage_dir(cfg: PipelineConfig, stage: str) -> Path:
+    if cfg.two_pass or cfg.fast_tune:
+        return cfg.output_dir / "stages" / stage
+    return cfg.output_dir
+
+
+def stage_paths(base_dir: Path) -> StagePaths:
+    return StagePaths(
+        index_path=base_dir / "images.txt",
+        emb_path=base_dir / "embeddings.dat",
+        meta_path=base_dir / "embeddings.json",
+        size_path=base_dir / "sizes.npy",
+        umap_path=base_dir / "umap.npy",
+        csv_path=base_dir / "clusters.csv",
+    )
+
+
+def run_stage(
+    cfg: PipelineConfig,
+    device: str,
+    rel_paths: List[str],
+    base_dir: Path,
+    write_csv: bool = True,
+) -> tuple[StagePaths, ClusterResult]:
+    paths = stage_paths(base_dir)
+    index = ImageIndex(cfg.input_dir, paths.index_path)
+    index.write(rel_paths)
+
+    if cfg.force or not paths.size_path.exists():
+        sizes = compute_size_features(
+            cfg.input_dir, rel_paths, cfg.background_color, cfg.autocrop_threshold
+        )
+        paths.size_path.parent.mkdir(parents=True, exist_ok=True)
+        np.save(paths.size_path, sizes)
+    else:
+        print(f"Size features exist in {paths.size_path}; skipping size step.")
+
+    if cfg.force or not paths.emb_path.exists() or not paths.meta_path.exists():
+        embedder = DINOv2Embedder(cfg, device)
+        dataset = ImageDataset(cfg.input_dir, rel_paths, embedder.transform)
+        embedder.embed(dataset, paths.emb_path, paths.meta_path)
+    else:
+        print(f"Embeddings exist in {paths.emb_path}; skipping embedding step.")
+
+    if cfg.force or not paths.umap_path.exists():
+        reducer = UMAPReducer(cfg)
+        reducer.reduce(paths.emb_path, paths.meta_path, paths.size_path, paths.umap_path)
+    else:
+        print(f"UMAP output exists in {paths.umap_path}; skipping reduction step.")
+
+    clusterer = HDBSCANClusterer(cfg)
+    result = clusterer.fit(paths.umap_path)
+    if write_csv:
+        clusterer.write_csv(paths.csv_path, rel_paths, result.labels)
+    return paths, result
+
+
+def select_uncertain(
+    result: "ClusterResult", threshold: float, include_noise: bool = True
+) -> np.ndarray:
+    labels = result.labels
+    mask = np.zeros(labels.shape, dtype=bool)
+    if include_noise:
+        mask |= labels == -1
+    if result.probabilities is not None:
+        mask |= result.probabilities < threshold
+    return np.flatnonzero(mask)
+
+
+def merge_labels(
+    base_labels: np.ndarray,
+    subset_indices: np.ndarray,
+    subset_labels: np.ndarray,
+) -> np.ndarray:
+    merged = base_labels.copy()
+    positive = base_labels[base_labels >= 0]
+    offset = int(positive.max()) + 1 if positive.size else 0
+    remapped = np.where(subset_labels >= 0, subset_labels + offset, -1)
+    merged[subset_indices] = remapped
+    return merged
+
+
+def run_pipeline(cfg: PipelineConfig) -> Path:
+    ensure_deps()
+    auto_repo = auto_model_repo(cfg)
+    if auto_repo is not None:
+        cfg.model_repo = auto_repo
+    configure_ssl(cfg)
+    if cfg.two_pass and cfg.fast_tune:
+        raise ValueError("Choose either two_pass or fast_tune, not both.")
+    if cfg.torch_threads is not None:
+        from .torch_utils import torch
+
+        torch.set_num_threads(cfg.torch_threads)
+    device = resolve_device()
+
+    index_path = cfg.output_dir / "images.txt"
+    index = ImageIndex(
+        cfg.input_dir,
+        index_path,
+        cfg.image_size_in_kbytes_min,
+        cfg.image_size_in_kbytes_max,
+    )
+    if cfg.force or not index_path.exists():
+        rel_paths = index.build(cfg.max_images)
+    else:
+        rel_paths = index.load()
+    if not rel_paths:
+        raise ValueError(
+            "No input images found. The input directory must contain at least one .jpg/.jpeg file. "
+            f"input_dir={cfg.input_dir}"
+        )
+
+    if cfg.fast_tune:
+        fast_cfg = make_fast_config(cfg)
+        fast_dir = stage_dir(cfg, "fast")
+        paths, _ = run_stage(fast_cfg, device, rel_paths, fast_dir, write_csv=True)
+        summarize_clusters_csv(paths.csv_path)
+        return paths.csv_path
+
+    if cfg.two_pass:
+        fast_cfg = make_fast_config(cfg)
+        pass1_dir = stage_dir(cfg, "pass1")
+        _, pass1_result = run_stage(fast_cfg, device, rel_paths, pass1_dir, write_csv=True)
+        uncertain_idx = select_uncertain(
+            pass1_result, cfg.refine_prob_threshold, cfg.refine_include_noise
+        )
+        if uncertain_idx.size == 0 or uncertain_idx.size < cfg.hdb_min_cluster_size:
+            final_csv = cfg.output_dir / "clusters.csv"
+            HDBSCANClusterer.write_csv(final_csv, rel_paths, pass1_result.labels)
+            summarize_clusters_csv(final_csv)
+            return final_csv
+
+        subset_paths = [rel_paths[i] for i in uncertain_idx.tolist()]
+        pass2_dir = stage_dir(cfg, "pass2")
+        _, pass2_result = run_stage(cfg, device, subset_paths, pass2_dir, write_csv=True)
+        merged_labels = merge_labels(pass1_result.labels, uncertain_idx, pass2_result.labels)
+        final_csv = cfg.output_dir / "clusters.csv"
+        HDBSCANClusterer.write_csv(final_csv, rel_paths, merged_labels)
+        summarize_clusters_csv(final_csv)
+        return final_csv
+
+    full_dir = stage_dir(cfg, "full")
+    paths, _ = run_stage(cfg, device, rel_paths, full_dir, write_csv=True)
+    summarize_clusters_csv(paths.csv_path)
+    return paths.csv_path
+
+
+def clustering(
+    input_image_dir: str | Path,
+    output_dir: str | Path,
+    batch_size: int = 16,
+    num_workers: int = 2,
+    umap_dim: int = 30,
+    hdb_min_cluster_size: int = 25,
+    **overrides,
+) -> Path:
+    """
+    Run the full clustering pipeline and return the path to the CSV output.
+
+    Parameters
+    ----------
+    input_image_dir : str | Path
+        Folder containing JPG images to cluster.
+    output_dir : str | Path
+        Folder where artifacts and clusters.csv are written.
+    batch_size : int
+        Embedding batch size (lower is safer for RAM/IO).
+    num_workers : int
+        DataLoader workers (keep low for external drives).
+    umap_dim : int
+        Target dimensionality for UMAP.
+    hdb_min_cluster_size : int
+        Minimum cluster size for HDBSCAN.
+    **overrides
+        Any other PipelineConfig fields to override, e.g. two_pass=True,
+        autocrop=False, fast_tune=True, model_name="dinov2_vitb14".
+    """
+    cfg = PipelineConfig(
+        input_dir=Path(input_image_dir),
+        output_dir=Path(output_dir),
+        batch_size=batch_size,
+        num_workers=num_workers,
+        umap_dim=umap_dim,
+        hdb_min_cluster_size=hdb_min_cluster_size,
+        **overrides,
+    )
+    from .config import validate_config
+
+    validate_config(cfg)
+    return run_pipeline(cfg)

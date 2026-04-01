@@ -1,0 +1,343 @@
+#!/usr/bin/env python3
+"""Move clustered images into cluster-named folders.
+
+This script is the implementation behind the CLI name
+``move-crops-to-cluster-dirs`` (or you can run it as a module via
+``python move_crops_to_cluster_dirs.py``).
+
+What this script does
+---------------------
+Reads a ``clusters.csv`` file produced by the pipeline and moves image files
+into subfolders named after their cluster label (the value in the ``cluster``
+column). The script uses the ``image_id`` column to locate each image relative
+to ``--input-dir`` and then moves the file into a cluster folder. If a matching
+``.JSON`` file exists with the same basename as the image, it is moved alongside
+the image into the same cluster folder. This makes it easy to review clustered
+outputs in a filesystem browser while keeping the original folder structure
+intact (unless ``--flat`` is specified).
+
+Inputs
+------
+- ``--clusters``: Path to the ``clusters.csv`` file. The CSV must have columns
+  ``image_id`` and ``cluster``.
+- ``--input-dir``: Root directory for the images listed in ``image_id``. The
+  pipeline writes ``image_id`` values as paths relative to the input directory.
+
+Outputs
+-------
+- Creates a folder per cluster label (e.g., ``0/``, ``1/``, ``-1/``) and moves
+  images into those folders.
+- By default, the folder structure under each cluster mirrors the original
+  relative paths; use ``--flat`` to avoid nested subfolders.
+- Use ``--json-only`` to move only the matching ``.JSON`` files while leaving
+  images in place.
+- Prints a summary of moved, skipped, and missing files, including JSON moved
+  without images.
+
+Usage
+-----
+Move images in place (cluster folders created inside the input directory)::
+
+  python move_crops_to_cluster_dirs.py --clusters /path/to/output/clusters.csv \\
+    --input-dir /path/to/images
+
+Move images into a separate destination root::
+
+  python move_crops_to_cluster_dirs.py --clusters /path/to/output/clusters.csv \\
+    --input-dir /path/to/images --dest-dir /path/to/clustered
+
+Preview changes without moving files::
+
+  python move_crops_to_cluster_dirs.py --clusters /path/to/output/clusters.csv \\
+    --input-dir /path/to/images --dry-run
+
+Conflict handling
+-----------------
+If a destination file already exists, the default behavior is to rename the
+incoming file by appending ``_1``, ``_2``, etc. Use ``--on-conflict`` to change
+this to ``overwrite``, ``skip``, or ``error``.
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import shutil
+import sys
+from pathlib import Path
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Move images into subfolders named after their cluster label "
+            "from clusters.csv."
+        )
+    )
+    parser.add_argument(
+        "--clusters",
+        required=True,
+        type=Path,
+        help="Path to clusters.csv produced by the pipeline.",
+    )
+    parser.add_argument(
+        "--input-dir",
+        required=True,
+        type=Path,
+        help="Root directory that image_id values are relative to.",
+    )
+    parser.add_argument(
+        "--dest-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Directory to create cluster folders in. Defaults to --input-dir."
+        ),
+    )
+    parser.add_argument(
+        "--flat",
+        action="store_true",
+        help="Place all images directly inside each cluster folder (no subfolders).",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print planned moves without changing any files.",
+    )
+    parser.add_argument(
+        "--json-only",
+        action="store_true",
+        help=(
+            "Move only matching .JSON files and leave images in place. "
+            "Missing images are still counted when JSON is moved."
+        ),
+    )
+    parser.add_argument(
+        "--on-conflict",
+        choices=("rename", "overwrite", "skip", "error"),
+        default="rename",
+        help="What to do if the destination file already exists.",
+    )
+    return parser.parse_args()
+
+
+def _normalize_cluster(raw: str) -> str:
+    raw = raw.strip()
+    if not raw:
+        return ""
+    try:
+        return str(int(float(raw)))
+    except ValueError:
+        return raw
+
+
+def _resolve_conflict(dest: Path, mode: str) -> Path | None:
+    if not dest.exists():
+        return dest
+    if mode == "overwrite":
+        if dest.is_file():
+            dest.unlink()
+        return dest
+    if mode == "skip":
+        return None
+    if mode == "error":
+        raise FileExistsError(dest)
+    # mode == "rename"
+    stem = dest.stem
+    suffix = dest.suffix
+    parent = dest.parent
+    for idx in range(1, 10_000):
+        candidate = parent / f"{stem}_{idx}{suffix}"
+        if not candidate.exists():
+            return candidate
+    raise RuntimeError(f"Could not resolve name conflict for {dest}")
+
+
+def _resolve_conflict_pair(
+    dest_image: Path,
+    dest_json: Path,
+    mode: str,
+) -> tuple[Path, Path] | None:
+    if mode == "overwrite":
+        if dest_image.exists() and dest_image.is_file():
+            dest_image.unlink()
+        if dest_json.exists() and dest_json.is_file():
+            dest_json.unlink()
+        return dest_image, dest_json
+
+    if mode == "skip":
+        if dest_image.exists() or dest_json.exists():
+            return None
+        return dest_image, dest_json
+
+    if mode == "error":
+        if dest_image.exists():
+            raise FileExistsError(dest_image)
+        if dest_json.exists():
+            raise FileExistsError(dest_json)
+        return dest_image, dest_json
+
+    # mode == "rename"
+    if not dest_image.exists() and not dest_json.exists():
+        return dest_image, dest_json
+
+    stem = dest_image.stem
+    suffix = dest_image.suffix
+    parent = dest_image.parent
+    for idx in range(1, 10_000):
+        candidate_image = parent / f"{stem}_{idx}{suffix}"
+        candidate_json = candidate_image.with_suffix(dest_json.suffix)
+        if not candidate_image.exists() and not candidate_json.exists():
+            return candidate_image, candidate_json
+    raise RuntimeError(f"Could not resolve name conflict for {dest_image}")
+
+
+def main() -> int:
+    args = _parse_args()
+    clusters_path = args.clusters
+    input_dir = args.input_dir
+    dest_dir = args.dest_dir or input_dir
+
+    if not clusters_path.exists():
+        print(f"clusters.csv not found: {clusters_path}", file=sys.stderr)
+        return 2
+    if not input_dir.exists():
+        print(f"input directory not found: {input_dir}", file=sys.stderr)
+        return 2
+
+    moved_images = 0
+    moved_json = 0
+    moved_json_without_image = 0
+    skipped = 0
+    missing_images = 0
+    missing_json = 0
+
+    with clusters_path.open("r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        if reader.fieldnames is None:
+            print("clusters.csv has no header row", file=sys.stderr)
+            return 2
+        if "image_id" not in reader.fieldnames or "cluster" not in reader.fieldnames:
+            print(
+                "clusters.csv must have columns: image_id, cluster",
+                file=sys.stderr,
+            )
+            return 2
+
+        for row in reader:
+            rel = (row.get("image_id") or "").strip()
+            cluster_raw = row.get("cluster")
+            if not rel or cluster_raw is None:
+                skipped += 1
+                continue
+
+            cluster = _normalize_cluster(cluster_raw)
+            if not cluster:
+                skipped += 1
+                continue
+
+            rel_path = Path(rel)
+            src = input_dir / rel_path
+            json_rel = rel_path.with_suffix(".JSON")
+            json_src = input_dir / json_rel
+
+            image_exists = src.exists()
+            json_exists = json_src.exists()
+
+            if args.flat:
+                dest = dest_dir / cluster / rel_path.name
+                dest_json = dest_dir / cluster / json_rel.name
+            else:
+                dest = dest_dir / cluster / rel_path
+                dest_json = dest_dir / cluster / json_rel
+
+            if args.json_only:
+                if not json_exists:
+                    missing_json += 1
+                    continue
+                dest_json = _resolve_conflict(dest_json, args.on_conflict)
+                if dest_json is None:
+                    skipped += 1
+                    continue
+            else:
+                if not image_exists and not json_exists:
+                    missing_images += 1
+                    missing_json += 1
+                    continue
+                if image_exists and json_exists:
+                    resolved = _resolve_conflict_pair(dest, dest_json, args.on_conflict)
+                    if resolved is None:
+                        skipped += 1
+                        continue
+                    dest, dest_json = resolved
+                elif image_exists:
+                    dest = _resolve_conflict(dest, args.on_conflict)
+                    if dest is None:
+                        skipped += 1
+                        continue
+                elif json_exists:
+                    dest_json = _resolve_conflict(dest_json, args.on_conflict)
+                    if dest_json is None:
+                        skipped += 1
+                        continue
+
+            if args.dry_run:
+                if args.json_only:
+                    print(f"{json_src} -> {dest_json}")
+                    moved_json += 1
+                    if not image_exists:
+                        moved_json_without_image += 1
+                else:
+                    if image_exists:
+                        print(f"{src} -> {dest}")
+                        moved_images += 1
+                    else:
+                        missing_images += 1
+                    if json_exists:
+                        print(f"{json_src} -> {dest_json}")
+                        moved_json += 1
+                        if not image_exists:
+                            moved_json_without_image += 1
+                    else:
+                        missing_json += 1
+                continue
+
+            if args.json_only:
+                dest_json.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(json_src), str(dest_json))
+                moved_json += 1
+                if not image_exists:
+                    moved_json_without_image += 1
+            else:
+                if image_exists:
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.move(str(src), str(dest))
+                    moved_images += 1
+                else:
+                    missing_images += 1
+
+                if json_exists:
+                    dest_json.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.move(str(json_src), str(dest_json))
+                    moved_json += 1
+                    if not image_exists:
+                        moved_json_without_image += 1
+                else:
+                    missing_json += 1
+
+    print(f"Moved images: {moved_images}")
+    if moved_json:
+        print(f"Moved JSON: {moved_json}")
+    if moved_json_without_image:
+        print(f"Moved JSON without image: {moved_json_without_image}")
+    if skipped:
+        print(f"Skipped: {skipped}")
+    if missing_images:
+        print(f"Missing images: {missing_images}")
+    if missing_json:
+        print(f"Missing JSON: {missing_json}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
