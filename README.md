@@ -27,6 +27,22 @@ Install them with:
 pip install -r requirements.txt
 ```
 
+## DINOv2 setup (local clone)
+
+This repo expects a local clone of `facebookresearch/dinov2` when `--model-repo`
+or `DINOv2_REPO` is used. The `dinov2/` directory is not synced to this repo, so
+clone it separately:
+
+```bash
+git clone https://github.com/facebookresearch/dinov2 ./dinov2
+```
+
+Then point the pipeline at the local clone:
+
+```bash
+python clustering compute-clusters --input-dir /path/to/images --output-dir /path/to/output --model-repo ./dinov2
+```
+
 ## Inputs
 
 - A folder containing JPG/JPEG images (any size/aspect ratio).
