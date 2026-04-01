@@ -70,10 +70,22 @@ Basic run:
 python clustering compute-clusters --input-dir /path/to/images --output-dir /path/to/output
 ```
 
+Show help for the clustering pipeline options:
+
+```bash
+python clustering compute-clusters --help
+```
+
 Estimate a good background distance threshold from sample images:
 
 ```bash
-python calibrate_threshold.py --input-dir /path/to/images --background-color 45,71,159
+python clustering calibrate-threshold --input-dir /path/to/images --background-color 45,71,159
+```
+
+Show help for the threshold calibration options:
+
+```bash
+python clustering calibrate-threshold --help
 ```
 
 What `calibrate_threshold.py` does:
@@ -100,28 +112,39 @@ Generate a summary file from an existing clusters.csv:
 python clustering compute-clusters --summarize-clusters /path/to/output/clusters.csv
 ```
 
-Organize clustered outputs into folders (moves images and matching `.JSON` metadata, even if the image file is missing):
+## CLI commands
+
+| Command | Purpose |
+| --- | --- |
+| `compute-clusters` | Run the DINOv2 → UMAP → HDBSCAN clustering pipeline. |
+| `calibrate-threshold` | Estimate a background color distance threshold for auto-cropping. |
+| `copy-crops-to-cluster-dirs` | Copy clustered images/JSON into cluster-labeled folders. |
+
+Organize clustered outputs into folders (copies images and matching `.JSON` metadata, even if either the image or the JSON file is missing):
 
 ```bash
-python move_crops_to_cluster_dirs.py --clusters /path/to/output/clusters.csv \
+python clustering copy-crops-to-cluster-dirs --clusters /path/to/output/clusters.csv \
   --input-dir /path/to/images --dest-dir /path/to/clustered
 ```
 
-Move only `.JSON` metadata (leave images in place):
+Copy only `.JSON` metadata (leave images in place):
 
 ```bash
-python move_crops_to_cluster_dirs.py --clusters /path/to/output/clusters.csv \
+python clustering copy-crops-to-cluster-dirs --clusters /path/to/output/clusters.csv \
   --input-dir /path/to/images --dest-dir /path/to/clustered --json-only
 ```
 
-If you have a console entrypoint installed, the same command is available as
-`move-crops-to-cluster-dirs`.
+Show help for the cluster directory copy options:
 
-What `move-crops-to-cluster-dirs` does:
+```bash
+python clustering copy-crops-to-cluster-dirs --help
+```
+
+What `copy-crops-to-cluster-dirs` does:
 
 - Reads `clusters.csv` and groups images into subfolders named after their cluster ID (for example `0/`, `1/`, `-1/` for noise).
 - Uses the `image_id` column as a path relative to `--input-dir` and mirrors the original subfolder structure under each cluster unless `--flat` is provided.
-- Moves matching `.JSON` metadata files alongside the images, or uses `--json-only` to move just metadata while leaving images in place.
+- Copies matching `.JSON` metadata files alongside the images, or uses `--json-only` to copy just metadata while leaving images in place.
 - Handles destination conflicts with `--on-conflict` (`rename`, `overwrite`, `skip`, or `error`) and supports `--dry-run` for previews.
 
 ## Model download and SSL errors

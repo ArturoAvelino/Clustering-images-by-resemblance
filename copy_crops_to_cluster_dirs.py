@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Move clustered images into cluster-named folders.
+"""Copy clustered images into cluster-named folders.
 
-This script is the implementation behind the CLI name
-``move-crops-to-cluster-dirs`` (or you can run it as a module via
-``python move_crops_to_cluster_dirs.py``).
+This script is the implementation behind the CLI command
+``python clustering copy-crops-to-cluster-dirs`` (or you can run it directly
+via ``python copy_crops_to_cluster_dirs.py``).
 
 What this script does
 ---------------------
-Reads a ``clusters.csv`` file produced by the pipeline and moves image files
+Reads a ``clusters.csv`` file produced by the pipeline and copies image files
 into subfolders named after their cluster label (the value in the ``cluster``
 column). The script uses the ``image_id`` column to locate each image relative
-to ``--input-dir`` and then moves the file into a cluster folder. If a matching
-``.JSON`` file exists with the same basename as the image, it is moved alongside
+to ``--input-dir`` and then copies the file into a cluster folder. If a matching
+``.JSON`` file exists with the same basename as the image, it is copied alongside
 the image into the same cluster folder. This makes it easy to review clustered
 outputs in a filesystem browser while keeping the original folder structure
 intact (unless ``--flat`` is specified).
@@ -25,30 +25,30 @@ Inputs
 
 Outputs
 -------
-- Creates a folder per cluster label (e.g., ``0/``, ``1/``, ``-1/``) and moves
+- Creates a folder per cluster label (e.g., ``0/``, ``1/``, ``-1/``) and copies
   images into those folders.
 - By default, the folder structure under each cluster mirrors the original
   relative paths; use ``--flat`` to avoid nested subfolders.
-- Use ``--json-only`` to move only the matching ``.JSON`` files while leaving
+- Use ``--json-only`` to copy only the matching ``.JSON`` files while leaving
   images in place.
-- Prints a summary of moved, skipped, and missing files, including JSON moved
+- Prints a summary of copied, skipped, and missing files, including JSON copied
   without images.
 
 Usage
 -----
-Move images in place (cluster folders created inside the input directory)::
+Copy images in place (cluster folders created inside the input directory)::
 
-  python move_crops_to_cluster_dirs.py --clusters /path/to/output/clusters.csv \\
+  python clustering copy-crops-to-cluster-dirs --clusters /path/to/output/clusters.csv \\
     --input-dir /path/to/images
 
-Move images into a separate destination root::
+Copy images into a separate destination root::
 
-  python move_crops_to_cluster_dirs.py --clusters /path/to/output/clusters.csv \\
+  python clustering copy-crops-to-cluster-dirs --clusters /path/to/output/clusters.csv \\
     --input-dir /path/to/images --dest-dir /path/to/clustered
 
-Preview changes without moving files::
+Preview changes without copying files::
 
-  python move_crops_to_cluster_dirs.py --clusters /path/to/output/clusters.csv \\
+  python clustering copy-crops-to-cluster-dirs --clusters /path/to/output/clusters.csv \\
     --input-dir /path/to/images --dry-run
 
 Conflict handling
@@ -65,12 +65,13 @@ import csv
 import shutil
 import sys
 from pathlib import Path
+from typing import List, Optional
 
 
-def _parse_args() -> argparse.Namespace:
+def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Move images into subfolders named after their cluster label "
+            "Copy images into subfolders named after their cluster label "
             "from clusters.csv."
         )
     )
@@ -102,14 +103,14 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Print planned moves without changing any files.",
+        help="Print planned copies without changing any files.",
     )
     parser.add_argument(
         "--json-only",
         action="store_true",
         help=(
-            "Move only matching .JSON files and leave images in place. "
-            "Missing images are still counted when JSON is moved."
+            "Copy only matching .JSON files and leave images in place. "
+            "Missing images are still counted when JSON is copied."
         ),
     )
     parser.add_argument(
@@ -118,7 +119,7 @@ def _parse_args() -> argparse.Namespace:
         default="rename",
         help="What to do if the destination file already exists.",
     )
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def _normalize_cluster(raw: str) -> str:
@@ -192,8 +193,8 @@ def _resolve_conflict_pair(
     raise RuntimeError(f"Could not resolve name conflict for {dest_image}")
 
 
-def main() -> int:
-    args = _parse_args()
+def main(argv: Optional[List[str]] = None) -> int:
+    args = _parse_args(argv)
     clusters_path = args.clusters
     input_dir = args.input_dir
     dest_dir = args.dest_dir or input_dir
@@ -205,9 +206,9 @@ def main() -> int:
         print(f"input directory not found: {input_dir}", file=sys.stderr)
         return 2
 
-    moved_images = 0
-    moved_json = 0
-    moved_json_without_image = 0
+    copied_images = 0
+    copied_json = 0
+    copied_json_without_image = 0
     skipped = 0
     missing_images = 0
     missing_json = 0
@@ -284,52 +285,52 @@ def main() -> int:
             if args.dry_run:
                 if args.json_only:
                     print(f"{json_src} -> {dest_json}")
-                    moved_json += 1
+                    copied_json += 1
                     if not image_exists:
-                        moved_json_without_image += 1
+                        copied_json_without_image += 1
                 else:
                     if image_exists:
                         print(f"{src} -> {dest}")
-                        moved_images += 1
+                        copied_images += 1
                     else:
                         missing_images += 1
                     if json_exists:
                         print(f"{json_src} -> {dest_json}")
-                        moved_json += 1
+                        copied_json += 1
                         if not image_exists:
-                            moved_json_without_image += 1
+                            copied_json_without_image += 1
                     else:
                         missing_json += 1
                 continue
 
             if args.json_only:
                 dest_json.parent.mkdir(parents=True, exist_ok=True)
-                shutil.move(str(json_src), str(dest_json))
-                moved_json += 1
+                shutil.copy2(str(json_src), str(dest_json))
+                copied_json += 1
                 if not image_exists:
-                    moved_json_without_image += 1
+                    copied_json_without_image += 1
             else:
                 if image_exists:
                     dest.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.move(str(src), str(dest))
-                    moved_images += 1
+                    shutil.copy2(str(src), str(dest))
+                    copied_images += 1
                 else:
                     missing_images += 1
 
                 if json_exists:
                     dest_json.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.move(str(json_src), str(dest_json))
-                    moved_json += 1
+                    shutil.copy2(str(json_src), str(dest_json))
+                    copied_json += 1
                     if not image_exists:
-                        moved_json_without_image += 1
+                        copied_json_without_image += 1
                 else:
                     missing_json += 1
 
-    print(f"Moved images: {moved_images}")
-    if moved_json:
-        print(f"Moved JSON: {moved_json}")
-    if moved_json_without_image:
-        print(f"Moved JSON without image: {moved_json_without_image}")
+    print(f"Copied images: {copied_images}")
+    if copied_json:
+        print(f"Copied JSON: {copied_json}")
+    if copied_json_without_image:
+        print(f"Copied JSON without image: {copied_json_without_image}")
     if skipped:
         print(f"Skipped: {skipped}")
     if missing_images:

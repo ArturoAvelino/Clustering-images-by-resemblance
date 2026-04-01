@@ -6,18 +6,25 @@ CLI entry point for the clustering pipeline.
 Usage:
   python clustering compute-clusters --input-dir /path/to/images --output-dir /path/to/output
   python clustering compute-clusters --config /path/to/config.yaml
+  python clustering calibrate-threshold --input-dir /path/to/images --background-color 45,71,159
+  python clustering copy-crops-to-cluster-dirs --clusters /path/to/output/clusters.csv \\
+    --input-dir /path/to/images --dest-dir /path/to/clustered
 """
 
 import sys
 
+import calibrate_threshold as _calibrate_threshold
+import copy_crops_to_cluster_dirs as _copy_crops_to_cluster_dirs
 from pipeline.cli import main as _pipeline_main
 
 
 def _print_top_level_help() -> None:
     print(
         "Usage:\n"
-        "  python clustering compute-clusters [options]\n\n"
-        "Run `python clustering compute-clusters --help` for all pipeline options."
+        "  python clustering compute-clusters [options]\n"
+        "  python clustering calibrate-threshold [options]\n"
+        "  python clustering copy-crops-to-cluster-dirs [options]\n\n"
+        "Run `python clustering <command> --help` for help with each command."
     )
 
 
@@ -30,12 +37,16 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     command, *rest = argv
-    if command != "compute-clusters":
-        print(f"Unknown command: {command}", file=sys.stderr)
-        _print_top_level_help()
-        return 2
+    if command == "compute-clusters":
+        return _pipeline_main(rest, prog="python clustering compute-clusters")
+    if command == "calibrate-threshold":
+        return _calibrate_threshold.main(rest)
+    if command == "copy-crops-to-cluster-dirs":
+        return _copy_crops_to_cluster_dirs.main(rest)
 
-    return _pipeline_main(rest, prog="python clustering compute-clusters")
+    print(f"Unknown command: {command}", file=sys.stderr)
+    _print_top_level_help()
+    return 2
 
 
 if __name__ == "__main__":

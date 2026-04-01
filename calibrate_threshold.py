@@ -14,12 +14,16 @@ Typical usage:
 - Provide a representative input folder.
 - Pass the same --background-color you intend to use for clustering.
 - Start with the suggested median threshold, then adjust based on visual checks.
+
+CLI usage:
+- python clustering calibrate-threshold --input-dir /path/to/images --background-color 45,71,159
+- python calibrate_threshold.py --input-dir /path/to/images --background-color 45,71,159
 """
 
 import argparse
 import os
 from pathlib import Path
-from typing import Iterable, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 import numpy as np
 from PIL import Image
@@ -126,7 +130,7 @@ def estimate_threshold(
     }
 
 
-def main() -> int:
+def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Estimate a background color distance threshold.")
     parser.add_argument("--input-dir", required=True, help="Folder with sample images")
     parser.add_argument(
@@ -138,7 +142,7 @@ def main() -> int:
     parser.add_argument("--sample-images", type=int, default=20)
     parser.add_argument("--max-pixels", type=int, default=200000)
     parser.add_argument("--seed", type=int, default=42)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     stats = estimate_threshold(
         Path(args.input_dir),
