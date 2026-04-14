@@ -53,6 +53,8 @@ class PipelineConfig:
 class ClusterResult:
     labels: np.ndarray
     probabilities: Optional[np.ndarray]
+    outlier_scores: Optional[np.ndarray]
+    exemplars: Optional[np.ndarray]
 
 
 @dataclass

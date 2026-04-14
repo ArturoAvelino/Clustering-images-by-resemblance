@@ -18,7 +18,8 @@ Inputs
 
 Outputs
 -------
-- clusters.csv: two columns [image_id, cluster] (noise labeled as -1).
+- clusters.csv: columns [image_id, cluster, probabilities, outlier_scores, exemplars]
+  (noise labeled as -1; exemplars is True/False).
 - embeddings.dat / embeddings.json: saved embedding matrix + metadata.
 - umap.npy: reduced vectors used for clustering.
 - images.txt: stable list of image paths used for the run.

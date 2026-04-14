@@ -7,7 +7,7 @@ This project clusters unlabeled arthropod images using a three-stage pipeline:
 3. **Clustering**: Uses HDBSCAN to group similar images and flag noise.
 4. **Size-aware weighting**: Adds a size feature (non-background pixel area) so arthropod size influences clustering.
 
-Artifacts are written to the output directory, including embeddings, reduced vectors, and a CSV that maps each image to a cluster label.
+Artifacts are written to the output directory, including embeddings, reduced vectors, and a CSV that maps each image to a cluster label plus HDBSCAN metadata.
 
 ## Requirements
 
@@ -43,6 +43,25 @@ Then point the pipeline at the local clone:
 python clustering compute-clusters --input-dir /path/to/images --output-dir /path/to/output --model-repo ./dinov2
 ```
 
+## DINOv2 embedding dimension
+
+The embedding vector length is the model's `embed_dim`. This pipeline takes the
+CLS token (when the model returns a token sequence) and stores a vector of size
+`embed_dim` per image. The dimension is read from `model.embed_dim` and, if that
+is missing, inferred from a forward pass.
+
+Common backbone sizes used here:
+
+| Model | Embedding dimension |
+| --- | --- |
+| `dinov2_vits14` | 384 |
+| `dinov2_vitb14` (default) | 768 |
+| `dinov2_vitl14` | 1024 |
+| `dinov2_vitg14` | 1536 |
+
+If you supply a custom `model_name`, the embedding size will match that model's
+`embed_dim`.
+
 ## Inputs
 
 - A folder containing JPG/JPEG images (any size/aspect ratio).
@@ -54,13 +73,29 @@ python clustering compute-clusters --input-dir /path/to/images --output-dir /pat
 
 The output directory contains:
 
-- `clusters.csv` with columns `[image_id, cluster]` (noise is `-1`)
+- `clusters.csv` with columns `[image_id, cluster, probabilities, outlier_scores, dim_reduction]`
+  (noise is `-1`; `dim_reduction` is a JSON array of
+  UMAP values, length = `umap_dim`)
 - `summary_clusters.csv` with columns `[cluster, num_obj_in_cluster]`
 - `embeddings.dat` and `embeddings.json` (embedding matrix + metadata)
 - `umap.npy` (UMAP-reduced vectors)
 - `images.txt` (stable list of image paths used)
 
 When `--two-pass` or `--fast-tune` is used, outputs are grouped under `output_dir/stages/`.
+
+## Two-pass mode (pass 1 / pass 2)
+
+When `two_pass: true` is enabled in the configuration input file, the pipeline runs HDBSCAN in two stages:
+
+1. **Pass 1 (fast stage)**: Uses the *fast* UMAP settings to reduce the full
+   dataset, then clusters all images. By default, `fast_umap_dim=15`, so the
+   UMAP vectors given to HDBSCAN in pass 1 have 15 elements each.
+2. **Pass 2 (refinement stage)**: Re-runs UMAP + HDBSCAN only on the uncertain
+   subset, using the *full* settings. The UMAP vectors given to HDBSCAN in pass 2
+   have `umap_dim` elements (for example 30).
+
+Recommendation: prefer `two_pass: false` so all objects are clustered using
+`umap_dim` consistently.
 
 ## Usage (CLI)
 
@@ -183,7 +218,7 @@ most important fields are:
 - `num_workers`
 - `umap_dim`
 - `hdb_min_cluster_size`
-- `two_pass` or `fast_tune`
+- `two_pass` or `fast_tune` (recommended: "two_pass: false")
 - `autocrop`
 - `background_color` (RGB background color as `[R, G, B]`; default is tuned for blue)
 - `autocrop_threshold` (color-distance threshold used to separate background from foreground)
@@ -210,7 +245,7 @@ output_csv = clustering(
     num_workers=2,
     umap_dim=30,
     hdb_min_cluster_size=25,
-    two_pass=True,
+    two_pass=False,
     model_repo="/path/to/dinov2",
 )
 ```
@@ -241,9 +276,14 @@ In summary:
   less dense than cluster 1.
 
 - Within a cluster, similarity/density is not encoded by the ID. If
-  you want a per‑point “confidence,” HDBSCAN exposes `probabilities_`,
-  which this code already returns and uses to flag uncertain points
-  in the two‑pass flow. `pipeline/pipeline.py`.
+  you want per‑point diagnostics, HDBSCAN exposes `probabilities_` and
+  `outlier_scores_`, which this code writes to `clusters.csv` and uses
+  to flag uncertain points in the two‑pass flow. `pipeline/pipeline.py`.
+
+- The `dim_reduction` column stores the per-image UMAP output as a JSON array.
+  The length matches the UMAP dimensionality for the stage that produced the row.
+  In `--two-pass` or `--fast-tune` runs, this can be `fast_umap_dim` unless you
+  set it to match `umap_dim`.
 
 - Lower cluster IDs are not more similar/dense than higher IDs.
 

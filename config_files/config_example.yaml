@@ -41,7 +41,7 @@ hdb_min_cluster_size: 25
 
 # Enable the two-pass pipeline that refines uncertain samples.
 # If false, a single pass is run.
-two_pass: true
+two_pass: false
 
 # Enable automatic cropping of background-colored margins.
 # Set to false if backgrounds are not consistent or if crops are already tight.

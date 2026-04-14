@@ -9,17 +9,19 @@ What this script does
 ---------------------
 Reads a ``clusters.csv`` file produced by the pipeline and copies image files
 into subfolders named after their cluster label (the value in the ``cluster``
-column). The script uses the ``image_id`` column to locate each image relative
-to ``--input-dir`` and then copies the file into a cluster folder. If a matching
-``.JSON`` file exists with the same basename as the image, it is copied alongside
-the image into the same cluster folder. This makes it easy to review clustered
-outputs in a filesystem browser while keeping the original folder structure
-intact (unless ``--flat`` is specified).
+column). The CSV can contain extra metadata columns (for example probabilities
+or outlier scores); only ``image_id`` and ``cluster`` are required. The script
+uses the ``image_id`` column to locate each image relative to ``--input-dir``
+and then copies the file into a cluster folder. If a matching ``.JSON`` file
+exists with the same basename as the image, it is copied alongside the image
+into the same cluster folder. This makes it easy to review clustered outputs in
+a filesystem browser while keeping the original folder structure intact (unless
+``--flat`` is specified).
 
 Inputs
 ------
 - ``--clusters``: Path to the ``clusters.csv`` file. The CSV must have columns
-  ``image_id`` and ``cluster``.
+  ``image_id`` and ``cluster`` (extra columns are ignored).
 - ``--input-dir``: Root directory for the images listed in ``image_id``. The
   pipeline writes ``image_id`` values as paths relative to the input directory.
 

@@ -67,7 +67,16 @@ def run_stage(
     clusterer = HDBSCANClusterer(cfg)
     result = clusterer.fit(paths.umap_path)
     if write_csv:
-        clusterer.write_csv(paths.csv_path, rel_paths, result.labels)
+        dim_reduction = np.load(paths.umap_path)
+        clusterer.write_csv(
+            paths.csv_path,
+            rel_paths,
+            result.labels,
+            result.probabilities,
+            result.outlier_scores,
+            result.exemplars,
+            dim_reduction,
+        )
     return paths, result
 
 
@@ -94,6 +103,69 @@ def merge_labels(
     remapped = np.where(subset_labels >= 0, subset_labels + offset, -1)
     merged[subset_indices] = remapped
     return merged
+
+
+def merge_optional_array(
+    base: np.ndarray | None,
+    subset_indices: np.ndarray,
+    subset: np.ndarray | None,
+    length: int,
+    fill_value,
+) -> np.ndarray | None:
+    if base is None and subset is None:
+        return None
+    if base is None:
+        dtype = subset.dtype if subset is not None else type(fill_value)
+        merged = np.full(length, fill_value, dtype=dtype)
+    else:
+        merged = np.array(base, copy=True)
+        if merged.shape[0] != length:
+            raise ValueError("Base array length does not match labels length.")
+    if subset is not None:
+        merged[subset_indices] = subset
+    return merged
+
+
+def merge_dim_reduction(
+    base: np.ndarray,
+    subset_indices: np.ndarray,
+    subset: np.ndarray,
+    length: int,
+) -> List[List[float]]:
+    if base.ndim != 2 or subset.ndim != 2:
+        raise ValueError("dim_reduction arrays must be 2D.")
+    if base.shape[0] != length:
+        raise ValueError("Base dim_reduction length does not match labels length.")
+    if subset.shape[0] != subset_indices.shape[0]:
+        raise ValueError("Subset dim_reduction length does not match subset indices.")
+    merged = [row.tolist() for row in base]
+    for out_idx, base_idx in enumerate(subset_indices.tolist()):
+        merged[base_idx] = subset[out_idx].tolist()
+    return merged
+
+
+def merge_results(
+    base: ClusterResult,
+    subset_indices: np.ndarray,
+    subset: ClusterResult,
+) -> ClusterResult:
+    length = base.labels.shape[0]
+    merged_labels = merge_labels(base.labels, subset_indices, subset.labels)
+    merged_probabilities = merge_optional_array(
+        base.probabilities, subset_indices, subset.probabilities, length, np.nan
+    )
+    merged_outlier_scores = merge_optional_array(
+        base.outlier_scores, subset_indices, subset.outlier_scores, length, np.nan
+    )
+    merged_exemplars = merge_optional_array(
+        base.exemplars, subset_indices, subset.exemplars, length, False
+    )
+    return ClusterResult(
+        labels=merged_labels,
+        probabilities=merged_probabilities,
+        outlier_scores=merged_outlier_scores,
+        exemplars=merged_exemplars,
+    )
 
 
 def run_pipeline(cfg: PipelineConfig) -> Path:
@@ -137,22 +209,48 @@ def run_pipeline(cfg: PipelineConfig) -> Path:
     if cfg.two_pass:
         fast_cfg = make_fast_config(cfg)
         pass1_dir = stage_dir(cfg, "pass1")
-        _, pass1_result = run_stage(fast_cfg, device, rel_paths, pass1_dir, write_csv=True)
+        pass1_paths, pass1_result = run_stage(
+            fast_cfg, device, rel_paths, pass1_dir, write_csv=True
+        )
         uncertain_idx = select_uncertain(
             pass1_result, cfg.refine_prob_threshold, cfg.refine_include_noise
         )
         if uncertain_idx.size == 0 or uncertain_idx.size < cfg.hdb_min_cluster_size:
             final_csv = cfg.output_dir / "clusters.csv"
-            HDBSCANClusterer.write_csv(final_csv, rel_paths, pass1_result.labels)
+            pass1_umap = np.load(pass1_paths.umap_path)
+            HDBSCANClusterer.write_csv(
+                final_csv,
+                rel_paths,
+                pass1_result.labels,
+                pass1_result.probabilities,
+                pass1_result.outlier_scores,
+                pass1_result.exemplars,
+                pass1_umap,
+            )
             summarize_clusters_csv(final_csv)
             return final_csv
 
         subset_paths = [rel_paths[i] for i in uncertain_idx.tolist()]
         pass2_dir = stage_dir(cfg, "pass2")
-        _, pass2_result = run_stage(cfg, device, subset_paths, pass2_dir, write_csv=True)
-        merged_labels = merge_labels(pass1_result.labels, uncertain_idx, pass2_result.labels)
+        pass2_paths, pass2_result = run_stage(
+            cfg, device, subset_paths, pass2_dir, write_csv=True
+        )
+        merged_result = merge_results(pass1_result, uncertain_idx, pass2_result)
+        pass1_umap = np.load(pass1_paths.umap_path)
+        pass2_umap = np.load(pass2_paths.umap_path)
+        merged_umap = merge_dim_reduction(
+            pass1_umap, uncertain_idx, pass2_umap, len(rel_paths)
+        )
         final_csv = cfg.output_dir / "clusters.csv"
-        HDBSCANClusterer.write_csv(final_csv, rel_paths, merged_labels)
+        HDBSCANClusterer.write_csv(
+            final_csv,
+            rel_paths,
+            merged_result.labels,
+            merged_result.probabilities,
+            merged_result.outlier_scores,
+            merged_result.exemplars,
+            merged_umap,
+        )
         summarize_clusters_csv(final_csv)
         return final_csv
 
@@ -173,6 +271,9 @@ def clustering(
 ) -> Path:
     """
     Run the full clustering pipeline and return the path to the CSV output.
+
+    The CSV includes columns: image_id, cluster, probabilities, outlier_scores,
+    dim_reduction.
 
     Parameters
     ----------

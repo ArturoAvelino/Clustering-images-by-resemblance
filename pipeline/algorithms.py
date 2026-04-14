@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import os
 from pathlib import Path
 from typing import List
@@ -83,13 +84,94 @@ class HDBSCANClusterer:
         )
         labels = clusterer.fit_predict(data)
         probabilities = getattr(clusterer, "probabilities_", None)
-        return ClusterResult(labels=labels, probabilities=probabilities)
+        outlier_scores = getattr(clusterer, "outlier_scores_", None)
+        exemplars = None
+        try:
+            exemplar_points = clusterer.exemplars_
+        except Exception:
+            exemplar_points = None
+        if exemplar_points is not None:
+            exemplars = self._build_exemplar_mask(data, exemplar_points)
+        return ClusterResult(
+            labels=labels,
+            probabilities=probabilities,
+            outlier_scores=outlier_scores,
+            exemplars=exemplars,
+        )
 
     @staticmethod
-    def write_csv(out_csv: Path, rel_paths: List[str], labels: np.ndarray) -> None:
+    def write_csv(
+        out_csv: Path,
+        rel_paths: List[str],
+        labels: np.ndarray,
+        probabilities: np.ndarray | None = None,
+        outlier_scores: np.ndarray | None = None,
+        exemplars: np.ndarray | None = None,
+        dim_reduction: np.ndarray | List[List[float]] | None = None,
+    ) -> None:
+        """Write clustering results to CSV with optional HDBSCAN metadata and UMAP output."""
         out_csv.parent.mkdir(parents=True, exist_ok=True)
+        if dim_reduction is not None:
+            if isinstance(dim_reduction, np.ndarray):
+                if dim_reduction.ndim != 2:
+                    raise ValueError("dim_reduction must be a 2D array.")
+                if dim_reduction.shape[0] != len(rel_paths):
+                    raise ValueError(
+                        "dim_reduction length does not match the number of images."
+                    )
+            elif len(dim_reduction) != len(rel_paths):
+                raise ValueError(
+                    "dim_reduction length does not match the number of images."
+                )
         with out_csv.open("w", encoding="utf-8", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow(["image_id", "cluster"])
-            for rel, label in zip(rel_paths, labels):
-                writer.writerow([rel, int(label)])
+            writer.writerow(
+                [
+                    "image_id",
+                    "cluster",
+                    "probabilities",
+                    "outlier_scores",
+                    "dim_reduction",
+                ]
+            )
+            for idx, (rel, label) in enumerate(zip(rel_paths, labels)):
+                prob = (
+                    ""
+                    if probabilities is None
+                    else round(float(probabilities[idx]), 4)
+                )
+                outlier = (
+                    ""
+                    if outlier_scores is None
+                    else round(float(outlier_scores[idx]), 4)
+                )
+                if dim_reduction is None:
+                    dim_value = ""
+                else:
+                    row = (
+                        dim_reduction[idx].tolist()
+                        if isinstance(dim_reduction, np.ndarray)
+                        else dim_reduction[idx]
+                    )
+                    dim_row = [round(float(x), 4) for x in row]
+                    dim_value = json.dumps(dim_row)
+                writer.writerow([rel, int(label), prob, outlier, dim_value])
+
+    @staticmethod
+    def _build_exemplar_mask(
+        data: np.ndarray, exemplar_points: List[np.ndarray]
+    ) -> np.ndarray:
+        if data.ndim != 2:
+            raise ValueError("HDBSCAN exemplar mapping expects 2D input data.")
+        if not exemplar_points:
+            return np.zeros(data.shape[0], dtype=bool)
+        exemplars = [ex for ex in exemplar_points if ex is not None and ex.size > 0]
+        if not exemplars:
+            return np.zeros(data.shape[0], dtype=bool)
+        exemplar_array = np.concatenate(exemplars, axis=0)
+        data_c = np.ascontiguousarray(data)
+        exemplar_c = np.ascontiguousarray(exemplar_array)
+        row_dtype = np.dtype((np.void, data_c.dtype.itemsize * data_c.shape[1]))
+        data_view = data_c.view(row_dtype).ravel()
+        exemplar_view = exemplar_c.view(row_dtype).ravel()
+        return np.isin(data_view, exemplar_view)
