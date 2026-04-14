@@ -5,7 +5,8 @@ This project clusters unlabeled arthropod images using a three-stage pipeline:
 1. **Embedding**: Extracts DINOv2 image embeddings from a pretrained ViT model.
 2. **Dimensionality reduction**: Uses UMAP to reduce embeddings while preserving local neighborhoods.
 3. **Clustering**: Uses HDBSCAN to group similar images and flag noise.
-4. **Size-aware weighting**: Adds a size feature (non-background pixel area) so arthropod size influences clustering.
+
+(Optional) **Size-aware weighting**: Adds a size feature (non-background pixel area) so arthropod size influences clustering.
 
 Artifacts are written to the output directory, including embeddings, reduced vectors, and a CSV that maps each image to a cluster label plus HDBSCAN metadata.
 
