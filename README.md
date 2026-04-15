@@ -22,7 +22,7 @@ The code expects these Python packages to be available:
 - numpy
 - certifi
 
-Install them with:
+Recommended installation procedure:
 
 ```bash
 pip install -r requirements.txt
@@ -76,7 +76,8 @@ The output directory contains:
 
 - `clusters.csv` with columns `[image_id, cluster, probabilities, outlier_scores, dim_reduction]`
   (noise is `-1`; `dim_reduction` is a JSON array of
-  UMAP values, length = `umap_dim`)
+  UMAP values, length = `umap_dim` unless `write_dimreduction_vector: false`,
+  in which case the column is empty)
 - `summary_clusters.csv` with columns `[cluster, num_obj_in_cluster]`
 - `embeddings.dat` and `embeddings.json` (embedding matrix + metadata)
 - `umap.npy` (UMAP-reduced vectors)
@@ -206,7 +207,7 @@ pass a PEM bundle path:
 python clustering compute-clusters --input-dir /path/to/images --output-dir /path/to/output --ssl-ca-bundle /path/to/ca-bundle.pem
 ```
 
-## Configuration
+## Input Configuration File
 
 The annotated YAML template lives at `config_files/config_example.yaml` and is
 the recommended starting point. The pipeline reads YAML configs directly. The
@@ -218,9 +219,10 @@ most important fields are:
 - `batch_size`
 - `num_workers`
 - `umap_dim`
-- `hdb_min_cluster_size`
-- `two_pass` or `fast_tune` (recommended: "two_pass: false")
-- `autocrop`
+- `hdbscan_min_cluster_size`
+- `write_dimreduction_vector` (default `true`, writes the UMAP vector to `clusters.csv`)
+- `two_pass` or `fast_tune` (recommended: `false`)
+- `autocrop` (default: `false`)
 - `background_color` (RGB background color as `[R, G, B]`; default is tuned for blue)
 - `autocrop_threshold` (color-distance threshold used to separate background from foreground)
 - `size_feature_weight` (higher values emphasize size)
@@ -245,7 +247,7 @@ output_csv = clustering(
     batch_size=16,
     num_workers=2,
     umap_dim=30,
-    hdb_min_cluster_size=25,
+    hdbscan_min_cluster_size=25,
     two_pass=False,
     model_repo="/path/to/dinov2",
 )
@@ -284,7 +286,8 @@ In summary:
 - The `dim_reduction` column stores the per-image UMAP output as a JSON array.
   The length matches the UMAP dimensionality for the stage that produced the row.
   In `--two-pass` or `--fast-tune` runs, this can be `fast_umap_dim` unless you
-  set it to match `umap_dim`.
+  set it to match `umap_dim`. If `write_dimreduction_vector: false`, this
+  column is left empty.
 
 - Lower cluster IDs are not more similar/dense than higher IDs.
 

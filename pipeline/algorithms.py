@@ -74,7 +74,7 @@ class HDBSCANClusterer:
 
         data = np.load(umap_path)
         clusterer = hdbscan.HDBSCAN(
-            min_cluster_size=self.cfg.hdb_min_cluster_size,
+            min_cluster_size=self.cfg.hdbscan_min_cluster_size,
             min_samples=self.cfg.hdb_min_samples,
             metric=self.cfg.hdb_metric,
             cluster_selection_method="eom",
@@ -125,15 +125,10 @@ class HDBSCANClusterer:
                 )
         with out_csv.open("w", encoding="utf-8", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow(
-                [
-                    "image_id",
-                    "cluster",
-                    "probabilities",
-                    "outlier_scores",
-                    "dim_reduction",
-                ]
-            )
+            headers = ["image_id", "cluster", "probabilities", "outlier_scores"]
+            if dim_reduction is not None:
+                headers.append("dim_reduction")
+            writer.writerow(headers)
             for idx, (rel, label) in enumerate(zip(rel_paths, labels)):
                 prob = (
                     ""
@@ -145,17 +140,16 @@ class HDBSCANClusterer:
                     if outlier_scores is None
                     else round(float(outlier_scores[idx]), 4)
                 )
-                if dim_reduction is None:
-                    dim_value = ""
-                else:
+                row_values = [rel, int(label), prob, outlier]
+                if dim_reduction is not None:
                     row = (
                         dim_reduction[idx].tolist()
                         if isinstance(dim_reduction, np.ndarray)
                         else dim_reduction[idx]
                     )
                     dim_row = [round(float(x), 4) for x in row]
-                    dim_value = json.dumps(dim_row)
-                writer.writerow([rel, int(label), prob, outlier, dim_value])
+                    row_values.append(json.dumps(dim_row))
+                writer.writerow(row_values)
 
     @staticmethod
     def _build_exemplar_mask(

@@ -25,7 +25,7 @@ class PipelineConfig:
     umap_neighbors: int = 30
     umap_min_dist: float = 0.0
     umap_metric: str = "cosine"
-    hdb_min_cluster_size: int = 25
+    hdbscan_min_cluster_size: int = 25
     hdb_min_samples: int = 10
     hdb_metric: str = "euclidean"
     autocrop: bool = False
@@ -45,6 +45,7 @@ class PipelineConfig:
     fast_num_workers: Optional[int] = None
     refine_prob_threshold: float = 0.7
     refine_include_noise: bool = True
+    write_dimreduction_vector: bool = True
     force: bool = False
     torch_threads: Optional[int] = None
 
@@ -84,6 +85,13 @@ def load_config(path: Path) -> dict:
     if "cropped_images_dir" in data:
         data["input_dir"] = data.pop("cropped_images_dir")
 
+    if "hdb_min_cluster_size" in data:
+        if "hdbscan_min_cluster_size" in data:
+            raise ValueError(
+                "Use only one of hdb_min_cluster_size or hdbscan_min_cluster_size."
+            )
+        data["hdbscan_min_cluster_size"] = data.pop("hdb_min_cluster_size")
+
     valid = {field.name for field in fields(PipelineConfig)}
     unknown = sorted(set(data) - valid)
     if unknown:
@@ -116,7 +124,7 @@ def build_config(args) -> PipelineConfig:
         "umap_neighbors": args.umap_neighbors,
         "umap_min_dist": args.umap_min_dist,
         "umap_metric": args.umap_metric,
-        "hdb_min_cluster_size": args.hdb_min_cluster_size,
+        "hdbscan_min_cluster_size": args.hdbscan_min_cluster_size,
         "hdb_min_samples": args.hdb_min_samples,
         "hdb_metric": args.hdb_metric,
         "autocrop": args.autocrop,
@@ -134,6 +142,7 @@ def build_config(args) -> PipelineConfig:
         "fast_num_workers": args.fast_num_workers,
         "refine_prob_threshold": args.refine_prob_threshold,
         "refine_include_noise": args.refine_include_noise,
+        "write_dimreduction_vector": args.write_dimreduction_vector,
         "force": args.force,
         "torch_threads": args.torch_threads,
     }
@@ -169,8 +178,8 @@ def validate_config(cfg: PipelineConfig) -> None:
         errors.append("umap_neighbors must be > 2")
     if not (0.0 <= cfg.umap_min_dist <= 1.0):
         errors.append("umap_min_dist must be between 0 and 1")
-    if cfg.hdb_min_cluster_size < 2:
-        errors.append("hdb_min_cluster_size must be >= 2")
+    if cfg.hdbscan_min_cluster_size < 2:
+        errors.append("hdbscan_min_cluster_size must be >= 2")
     if cfg.hdb_min_samples is not None and cfg.hdb_min_samples < 1:
         errors.append("hdb_min_samples must be >= 1")
     if cfg.autocrop_threshold < 0:

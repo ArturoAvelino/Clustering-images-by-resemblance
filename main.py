@@ -18,8 +18,8 @@ Inputs
 
 Outputs
 -------
-- clusters.csv: columns [image_id, cluster, probabilities, outlier_scores, exemplars]
-  (noise labeled as -1; exemplars is True/False).
+- clusters.csv: columns [image_id, cluster, probabilities, outlier_scores, dim_reduction]
+  (noise labeled as -1; dim_reduction is a JSON array unless write_dimreduction_vector is false).
 - embeddings.dat / embeddings.json: saved embedding matrix + metadata.
 - umap.npy: reduced vectors used for clustering.
 - images.txt: stable list of image paths used for the run.
@@ -37,13 +37,14 @@ output_dir: "/path/to/output"
 batch_size: 16
 num_workers: 2
 umap_dim: 30
-hdb_min_cluster_size: 25
+hdbscan_min_cluster_size: 25
 two_pass: true
 autocrop: true
 image_size_in_kbytes_min: 10
 image_size_in_kbytes_max: 99.99
+write_dimreduction_vector: true
 
-An annotated YAML template is available at config_files/config_example.yaml.
+An annotated YAML template is available at config_files/config_example_run_full_pipeline.yaml.
 
 Optional modes
 --------------

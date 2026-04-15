@@ -33,11 +33,14 @@ batch_size: 16
 # Number of data-loading worker processes for embedding.
 num_workers: 2
 
-# Target dimensionality for UMAP reduction.
+# Target dimensionality-reduction from UMAP.
 umap_dim: 30
 
 # Minimum cluster size for HDBSCAN (smaller values produce more clusters).
-hdb_min_cluster_size: 25
+hdbscan_min_cluster_size: 25
+
+# Write the UMAP vector to the dim_reduction column in clusters.csv.
+write_dimreduction_vector: true
 
 # Enable the two-pass pipeline that refines uncertain samples.
 # If false, a single pass is run.

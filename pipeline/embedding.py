@@ -7,6 +7,7 @@ from typing import Optional
 from urllib.parse import urlparse
 
 import numpy as np
+from tqdm import tqdm
 
 from .config import PipelineConfig
 from .data import ImageDataset, build_transform
@@ -154,19 +155,23 @@ class DINOv2Embedder:
         )
         start = time.time()
         written = 0
-        for batch_idx, images in enumerate(loader):
-            images = images.to(self.device, non_blocking=True)
-            with torch.inference_mode():
-                feats = self._forward_features(images).detach().cpu().numpy()
-            if dtype == np.float16:
-                feats = feats.astype(np.float16)
-            bsz = feats.shape[0]
-            emb[written : written + bsz] = feats
-            written += bsz
-            if written % max(1000, self.cfg.batch_size * 10) == 0:
-                elapsed = time.time() - start
-                rate = written / max(elapsed, 1e-6)
-                print(f"Embedded {written}/{n_samples} images ({rate:.1f} img/s)")
+        with tqdm(
+            total=n_samples, desc="DINO embedding", unit="img", position=1, leave=False
+        ) as pbar:
+            for batch_idx, images in enumerate(loader):
+                images = images.to(self.device, non_blocking=True)
+                with torch.inference_mode():
+                    feats = self._forward_features(images).detach().cpu().numpy()
+                if dtype == np.float16:
+                    feats = feats.astype(np.float16)
+                bsz = feats.shape[0]
+                emb[written : written + bsz] = feats
+                written += bsz
+                pbar.update(bsz)
+                if written % max(1000, self.cfg.batch_size * 10) == 0:
+                    elapsed = time.time() - start
+                    rate = written / max(elapsed, 1e-6)
+                    print(f"Embedded {written}/{n_samples} images ({rate:.1f} img/s)")
         emb.flush()
         meta = {
             "num_images": n_samples,

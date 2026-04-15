@@ -44,7 +44,8 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
     parser.add_argument("--umap-neighbors", type=int)
     parser.add_argument("--umap-min-dist", type=float)
     parser.add_argument("--umap-metric")
-    parser.add_argument("--hdb-min-cluster-size", type=int)
+    parser.add_argument("--hdbscan-min-cluster-size", type=int)
+    parser.add_argument("--hdb-min-cluster-size", dest="hdbscan_min_cluster_size", type=int)
     parser.add_argument("--hdb-min-samples", type=int)
     parser.add_argument("--hdb-metric")
     autocrop = parser.add_mutually_exclusive_group()
@@ -80,6 +81,15 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
         "--refine-include-noise", dest="refine_include_noise", action="store_true", default=None
     )
     refine.add_argument("--no-refine-noise", dest="refine_include_noise", action="store_false")
+    write_dim = parser.add_mutually_exclusive_group()
+    write_dim.add_argument(
+        "--write-dimreduction-vector", dest="write_dimreduction_vector", action="store_true", default=None
+    )
+    write_dim.add_argument(
+        "--no-write-dimreduction-vector",
+        dest="write_dimreduction_vector",
+        action="store_false",
+    )
     parser.add_argument("--torch-threads", type=int)
     parser.add_argument("--force", action="store_true", default=None)
     parser.add_argument(

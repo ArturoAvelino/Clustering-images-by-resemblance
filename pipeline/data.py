@@ -140,7 +140,11 @@ def compute_size_features(
     root: Path, rel_paths: List[str], background_color: tuple[int, int, int], distance: float
 ) -> np.ndarray:
     sizes = np.zeros(len(rel_paths), dtype=np.float32)
-    for idx, rel in enumerate(rel_paths):
+    from tqdm import tqdm
+
+    for idx, rel in enumerate(
+        tqdm(rel_paths, desc="Size features", unit="img", position=1, leave=False)
+    ):
         path = root / rel
         try:
             with Image.open(path) as img:
