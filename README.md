@@ -26,9 +26,7 @@ The code expects these Python packages to be available:
 
 ## Recommended installation procedure
 
-Clone the repository
-
-In the terminal, go to the folder directory where you want to install this code and type:
+Clone the repository. In the terminal, go to the folder directory where you want to install this code and type:
 
 ```bash
 git clone https://github.com/ArturoAvelino/Clustering-images-by-resemblance.git
