@@ -26,7 +26,8 @@ The code expects these Python packages to be available:
 
 ## Recommended installation procedure
 
-Clone the repository. In the terminal, go to the folder directory where you want to install this code and type:
+Clone the repository. In the terminal, go to the folder directory where you want 
+to install this code and type:
 
 ```bash
 git clone https://github.com/ArturoAvelino/Clustering-images-by-resemblance.git
@@ -46,7 +47,7 @@ Activate the virtual environment:
 source .venv/bin/activate
 ```
 
-Update Pip (The package installer):
+Update `pip` (The package installer):
 
 ```bash
 pip install --upgrade pip
@@ -97,61 +98,6 @@ pass a PEM bundle path:
 ```bash
 python clustering compute-clusters --input-dir /path/to/images --output-dir /path/to/output --ssl-ca-bundle /path/to/ca-bundle.pem
 ```
-
-## DINOv2 embedding dimension
-
-The embedding vector length is the model's `embed_dim`. This pipeline takes the
-CLS token (when the model returns a token sequence) and stores a vector of size
-`embed_dim` per image. The dimension is read from `model.embed_dim` and, if that
-is missing, inferred from a forward pass.
-
-Common backbone sizes used here:
-
-| Model | Embedding dimension |
-| --- | --- |
-| `dinov2_vits14` | 384 |
-| `dinov2_vitb14` (default) | 768 |
-| `dinov2_vitl14` | 1024 |
-| `dinov2_vitg14` | 1536 |
-
-If you supply a custom `model_name`, the embedding size will match that model's
-`embed_dim`.
-
-## Inputs
-
-- A folder containing JPG/JPEG images (any size/aspect ratio).
-- Background is expected to be a solid color (default: blue). The pipeline can auto-crop
-  non-background pixels (autocrop is off by default).
-- Optional file-size filtering can include only images within a size range.
-
-## Outputs
-
-The output directory contains:
-
-- `clusters.csv` with columns `[image_id, cluster, probabilities, outlier_scores, dim_reduction]`
-  (noise is `-1`; `dim_reduction` is a JSON array of
-  UMAP values, length = `umap_dim` unless `write_dimreduction_vector: false`,
-  in which case the column is empty)
-- `summary_clusters.csv` with columns `[cluster, num_obj_in_cluster]`
-- `embeddings.dat` and `embeddings.json` (embedding matrix + metadata)
-- `umap.npy` (UMAP-reduced vectors)
-- `images.txt` (stable list of image paths used)
-
-When `--two-pass` or `--fast-tune` is used, outputs are grouped under `output_dir/stages/`.
-
-## Two-pass mode (pass 1 / pass 2)
-
-When `two_pass: true` is enabled in the configuration input file, the pipeline runs HDBSCAN in two stages:
-
-1. **Pass 1 (fast stage)**: Uses the *fast* UMAP settings to reduce the full
-   dataset, then clusters all images. By default, `fast_umap_dim=15`, so the
-   UMAP vectors given to HDBSCAN in pass 1 have 15 elements each.
-2. **Pass 2 (refinement stage)**: Re-runs UMAP + HDBSCAN only on the uncertain
-   subset, using the *full* settings. The UMAP vectors given to HDBSCAN in pass 2
-   have `umap_dim` elements (for example 30).
-
-Recommendation: prefer `two_pass: false` so all objects are clustered using
-`umap_dim` consistently.
 
 ## Usage (CLI)
 
@@ -284,6 +230,61 @@ output_csv = clustering(
     model_repo="/path/to/dinov2",
 )
 ```
+
+## Inputs
+
+- A folder containing JPG/JPEG images (any size/aspect ratio).
+- Background is expected to be a solid color (default: blue). The pipeline can auto-crop
+  non-background pixels (autocrop is off by default).
+- Optional file-size filtering can include only images within a size range.
+
+## Outputs
+
+The output directory contains:
+
+- `clusters.csv` with columns `[image_id, cluster, probabilities, outlier_scores, dim_reduction]`
+  (noise is `-1`; `dim_reduction` is a JSON array of
+  UMAP values, length = `umap_dim` unless `write_dimreduction_vector: false`,
+  in which case the column is empty)
+- `summary_clusters.csv` with columns `[cluster, num_obj_in_cluster]`
+- `embeddings.dat` and `embeddings.json` (embedding matrix + metadata)
+- `umap.npy` (UMAP-reduced vectors)
+- `images.txt` (stable list of image paths used)
+
+When `--two-pass` or `--fast-tune` is used, outputs are grouped under `output_dir/stages/`.
+
+## Two-pass mode (pass 1 / pass 2)
+
+When `two_pass: true` is enabled in the configuration input file, the pipeline runs HDBSCAN in two stages:
+
+1. **Pass 1 (fast stage)**: Uses the *fast* UMAP settings to reduce the full
+   dataset, then clusters all images. By default, `fast_umap_dim=15`, so the
+   UMAP vectors given to HDBSCAN in pass 1 have 15 elements each.
+2. **Pass 2 (refinement stage)**: Re-runs UMAP + HDBSCAN only on the uncertain
+   subset, using the *full* settings. The UMAP vectors given to HDBSCAN in pass 2
+   have `umap_dim` elements (for example 30).
+
+Recommendation: prefer `two_pass: false` so all objects are clustered using
+`umap_dim` consistently.
+
+## DINOv2 embedding dimension
+
+The embedding vector length is the model's `embed_dim`. This pipeline takes the
+CLS token (when the model returns a token sequence) and stores a vector of size
+`embed_dim` per image. The dimension is read from `model.embed_dim` and, if that
+is missing, inferred from a forward pass.
+
+Common backbone sizes used here:
+
+| Model | Embedding dimension |
+| --- | --- |
+| `dinov2_vits14` | 384 |
+| `dinov2_vitb14` (default) | 768 |
+| `dinov2_vitl14` | 1024 |
+| `dinov2_vitg14` | 1536 |
+
+If you supply a custom `model_name`, the embedding size will match that model's
+`embed_dim`.
 
 ## About the clusters ID values in `clusters.csv`
 
