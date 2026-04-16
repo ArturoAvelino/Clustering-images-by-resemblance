@@ -35,7 +35,7 @@ git clone https://github.com/ArturoAvelino/Clustering-images-by-resemblance.git
 cd Clustering-images-by-resemblance
 ```
 
-Create a Python virtual environment inside the code directory:
+Create a Python virtual environment inside the `Clustering-images-by-resemblance` directory:
 
 ```bash
 python3 -m venv .venv
@@ -47,7 +47,7 @@ Activate the virtual environment:
 source .venv/bin/activate
 ```
 
-Update `pip` (The package installer):
+Update `pip` (the package installer):
 
 ```bash
 pip install --upgrade pip
