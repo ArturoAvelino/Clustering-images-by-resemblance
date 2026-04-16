@@ -127,7 +127,7 @@ Using a YAML config:
 python clustering compute-clusters --config /path/to/config.yaml
 ```
 
-Print the merged config:
+Print the values of all the config variables used, including default interval variables:
 
 ```bash
 python clustering compute-clusters --config /path/to/config.yaml --print-config
