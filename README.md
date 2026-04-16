@@ -12,6 +12,8 @@ Artifacts are written to the output directory, including embeddings, reduced vec
 
 ## Requirements
 
+- Python 3.11 or higher.
+
 The code expects these Python packages to be available:
 
 - torch
@@ -22,11 +24,42 @@ The code expects these Python packages to be available:
 - numpy
 - certifi
 
-Recommended installation procedure:
+## Recommended installation procedure
+
+Clone the repository
+
+In the terminal, go to the folder directory where you want to install this code and type:
+
+```bash
+git clone https://github.com/ArturoAvelino/Clustering-images-by-resemblance.git
+
+cd Clustering-images-by-resemblance
+```
+
+Create a Python virtual environment inside the code directory:
+
+```bash
+python3 -m venv .venv
+```
+
+Activate the virtual environment:
+
+```bash
+source .venv/bin/activate
+```
+
+Update Pip (The package installer):
+
+```bash
+pip install --upgrade pip
+```
+
+And install the required packages:
 
 ```bash
 pip install -r requirements.txt
 ```
+
 
 ## DINOv2 setup (local clone)
 
@@ -42,6 +75,29 @@ Then point the pipeline at the local clone:
 
 ```bash
 python clustering compute-clusters --input-dir /path/to/images --output-dir /path/to/output --model-repo ./dinov2
+```
+
+## Model download and SSL errors
+
+The default loader downloads the DINOv2 repo via `torch.hub`. If your environment has SSL
+verification issues, you can avoid HTTPS by pointing to a local clone of the repo:
+
+```bash
+git clone https://github.com/facebookresearch/dinov2 /path/to/dinov2
+python clustering compute-clusters --input-dir /path/to/images --output-dir /path/to/output --model-repo /path/to/dinov2
+```
+
+You can also set an environment variable:
+
+```bash
+DINOv2_REPO=/path/to/dinov2 python clustering compute-clusters --input-dir /path/to/images --output-dir /path/to/output
+```
+
+If you need to supply a custom certificate bundle (corporate proxies, older Python installs),
+pass a PEM bundle path:
+
+```bash
+python clustering compute-clusters --input-dir /path/to/images --output-dir /path/to/output --ssl-ca-bundle /path/to/ca-bundle.pem
 ```
 
 ## DINOv2 embedding dimension
@@ -101,6 +157,14 @@ Recommendation: prefer `two_pass: false` so all objects are clustered using
 
 ## Usage (CLI)
 
+CLI commands:
+
+| Command | Purpose |
+| --- | --- |
+| `compute-clusters` | Run the DINOv2 → UMAP → HDBSCAN clustering pipeline. |
+| `copy-crops-to-cluster-dirs` | Copy clustered images/JSON into cluster-labeled folders. |
+| `calibrate-threshold` | Estimate a background color distance threshold for auto-cropping. |
+
 Basic run:
 
 ```bash
@@ -112,24 +176,6 @@ Show help for the clustering pipeline options:
 ```bash
 python clustering compute-clusters --help
 ```
-
-Estimate a good background distance threshold from sample images:
-
-```bash
-python clustering calibrate-threshold --input-dir /path/to/images --background-color 45,71,159
-```
-
-Show help for the threshold calibration options:
-
-```bash
-python clustering calibrate-threshold --help
-```
-
-What `calibrate_threshold.py` does:
-
-- Samples pixels from a subset of images, computes RGB distance to the background color, and applies Otsu's method to each image to find a foreground/background split.
-- Prints a suggested median threshold and summary stats (p25/p75/min/max) so you can pick a conservative or aggressive cutoff.
-- Use the suggested value as `--autocrop-threshold` (or in config) and validate on a few images; increase it if too much background remains, decrease it if you are losing object pixels.
 
 Using a YAML config:
 
@@ -148,14 +194,6 @@ Generate a summary file from an existing clusters.csv:
 ```bash
 python clustering compute-clusters --summarize-clusters /path/to/output/clusters.csv
 ```
-
-## CLI commands
-
-| Command | Purpose |
-| --- | --- |
-| `compute-clusters` | Run the DINOv2 → UMAP → HDBSCAN clustering pipeline. |
-| `calibrate-threshold` | Estimate a background color distance threshold for auto-cropping. |
-| `copy-crops-to-cluster-dirs` | Copy clustered images/JSON into cluster-labeled folders. |
 
 Organize clustered outputs into folders (copies images and matching `.JSON` metadata, even if either the image or the JSON file is missing):
 
@@ -184,28 +222,24 @@ What `copy-crops-to-cluster-dirs` does:
 - Copies matching `.JSON` metadata files alongside the images, or uses `--json-only` to copy just metadata while leaving images in place.
 - Handles destination conflicts with `--on-conflict` (`rename`, `overwrite`, `skip`, or `error`) and supports `--dry-run` for previews.
 
-## Model download and SSL errors
-
-The default loader downloads the DINOv2 repo via `torch.hub`. If your environment has SSL
-verification issues, you can avoid HTTPS by pointing to a local clone of the repo:
+Estimate a good background distance threshold from sample images:
 
 ```bash
-git clone https://github.com/facebookresearch/dinov2 /path/to/dinov2
-python clustering compute-clusters --input-dir /path/to/images --output-dir /path/to/output --model-repo /path/to/dinov2
+python clustering calibrate-threshold --input-dir /path/to/images --background-color 45,71,159
 ```
 
-You can also set an environment variable:
+Show help for the threshold calibration options:
 
 ```bash
-DINOv2_REPO=/path/to/dinov2 python clustering compute-clusters --input-dir /path/to/images --output-dir /path/to/output
+python clustering calibrate-threshold --help
 ```
 
-If you need to supply a custom certificate bundle (corporate proxies, older Python installs),
-pass a PEM bundle path:
+What `calibrate_threshold.py` does:
 
-```bash
-python clustering compute-clusters --input-dir /path/to/images --output-dir /path/to/output --ssl-ca-bundle /path/to/ca-bundle.pem
-```
+- Samples pixels from a subset of images, computes RGB distance to the background color, and applies Otsu's method to each image to find a foreground/background split.
+- Prints a suggested median threshold and summary stats (p25/p75/min/max) so you can pick a conservative or aggressive cutoff.
+- Use the suggested value as `--autocrop-threshold` (or in config) and validate on a few images; increase it if too much background remains, decrease it if you are losing object pixels.
+
 
 ## Input Configuration File
 
