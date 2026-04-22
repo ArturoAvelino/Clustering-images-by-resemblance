@@ -6,8 +6,8 @@
 # Images are expected to be JPG/JPEG/PNG files.
 cropped_images_dir: "/path/to/images"
 
-# Directory where outputs (embeddings, clusters.csv, etc.) will be written.
-output_dir: "path/to/outputs/like/embeddings,/clusters.csv,/etc,/will/be/written"
+# Directory where save the outputs (embeddings, clusters.csv, etc.) will be written.
+output_dir: "path/to/save/the/outputs/like/the/embeddings,/clusters.csv,/etc/"
 
 # Optional local clone path for the DINOv2 repo to avoid network downloads.
 # If omitted, torch.hub will fetch from GitHub on first run.
