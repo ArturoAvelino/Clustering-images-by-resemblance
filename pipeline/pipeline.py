@@ -261,7 +261,7 @@ def run_pipeline(cfg: PipelineConfig) -> Path:
     ensure_deps(require_torch=True)
     auto_repo = auto_model_repo(cfg)
     if auto_repo is not None:
-        cfg.model_repo = auto_repo
+        cfg.dino_model = auto_repo
     configure_ssl(cfg)
     if cfg.two_pass and cfg.fast_tune:
         raise ValueError("Choose either two_pass or fast_tune, not both.")
@@ -582,7 +582,8 @@ def clustering(
         Minimum cluster size for HDBSCAN.
     **overrides
         Any other PipelineConfig fields to override, e.g. two_pass=True,
-        autocrop=False, fast_tune=True, model_name="dinov2_vitb14".
+        autocrop=False, fast_tune=True, model_name="dinov2_vitb14",
+        dino_model="/path/to/dinov2".
     """
     cfg = PipelineConfig(
         input_dir=Path(input_image_dir),

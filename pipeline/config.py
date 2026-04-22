@@ -17,7 +17,7 @@ class PipelineConfig:
     dino_files: Optional[Path] = None
     umap_files: Optional[Path] = None
     model_name: str = "dinov2_vitb14"
-    model_repo: Optional[str] = None
+    dino_model: Optional[str] = None
     ssl_ca_bundle: Optional[Path] = None
     img_size: int = 224
     batch_size: int = 16
@@ -95,6 +95,11 @@ def load_config(path: Path) -> dict:
             )
         data["hdbscan_min_cluster_size"] = data.pop("hdb_min_cluster_size")
 
+    if "model_repo" in data:
+        if "dino_model" in data:
+            raise ValueError("Use only one of model_repo or dino_model.")
+        data["dino_model"] = data.pop("model_repo")
+
     valid = {field.name for field in fields(PipelineConfig)}
     unknown = sorted(set(data) - valid)
     if unknown:
@@ -119,7 +124,7 @@ def build_config(args) -> PipelineConfig:
         "dino_files": args.dino_files,
         "umap_files": args.umap_files,
         "model_name": args.model_name,
-        "model_repo": args.model_repo,
+        "dino_model": args.dino_model,
         "ssl_ca_bundle": args.ssl_ca_bundle,
         "img_size": args.img_size,
         "batch_size": args.batch_size,

@@ -38,6 +38,7 @@ Example YAML config
 -------------------
 cropped_images_dir: "/path/to/images"
 output_dir: "/path/to/output"
+dino_model: "/path/to/dinov2"
 batch_size: 16
 num_workers: 2
 umap_dim: 30

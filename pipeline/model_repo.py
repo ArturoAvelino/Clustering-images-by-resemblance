@@ -20,7 +20,7 @@ def _local_repo_hint() -> Optional[str]:
 
 
 def auto_model_repo(cfg: PipelineConfig) -> Optional[str]:
-    if cfg.model_repo:
+    if cfg.dino_model:
         return None
 
     for key in ("DINOv2_REPO", "DINOV2_REPO"):

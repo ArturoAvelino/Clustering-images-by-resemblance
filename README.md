@@ -62,7 +62,7 @@ pip install -r requirements.txt
 
 ## DINOv2 setup (local clone)
 
-This repo expects a local clone of `facebookresearch/dinov2` when `--model-repo`
+This repo expects a local clone of `facebookresearch/dinov2` when `--dino-model`
 or `DINOv2_REPO` is used. The `dinov2/` directory is not synced to this repo, so
 clone it separately:
 
@@ -73,7 +73,7 @@ git clone https://github.com/facebookresearch/dinov2 ./dinov2
 Then point the pipeline at the local clone:
 
 ```bash
-python clustering compute-clusters --input-dir /path/to/images --output-dir /path/to/output --model-repo ./dinov2
+python clustering compute-clusters --input-dir /path/to/images --output-dir /path/to/output --dino-model ./dinov2
 ```
 
 ## Model download and SSL errors
@@ -83,7 +83,7 @@ verification issues, you can avoid HTTPS by pointing to a local clone of the rep
 
 ```bash
 git clone https://github.com/facebookresearch/dinov2 /path/to/dinov2
-python clustering compute-clusters --input-dir /path/to/images --output-dir /path/to/output --model-repo /path/to/dinov2
+python clustering compute-clusters --input-dir /path/to/images --output-dir /path/to/output --dino-model /path/to/dinov2
 ```
 
 You can also set an environment variable:
@@ -115,22 +115,6 @@ Basic run:
 python clustering compute-clusters --input-dir /path/to/images --output-dir /path/to/output
 ```
 
-Run only UMAP + HDBSCAN using embeddings from a previous run:
-
-```bash
-python clustering compute-clusters \
-  --compute only-dimreduction-and-clustering \
-  --config /path/to/config_example_run_only_dimreduction_and_clustering.yaml
-```
-
-Run only HDBSCAN using UMAP outputs from a previous run:
-
-```bash
-python clustering compute-clusters \
-  --compute only-clustering \
-  --config /path/to/config_example_run_only_clustering.yaml
-```
-
 Show help for the clustering pipeline options:
 
 ```bash
@@ -149,7 +133,15 @@ Print the values of all the config variables used, including default interval va
 python clustering compute-clusters --config /path/to/config.yaml --print-config
 ```
 
-## Rerun UMAP + HDBSCAN without embeddings
+### Rerun dimensionality-reduction (UMAP) + clustering (HDBSCAN) without embeddings (DINOv2)
+
+Run only UMAP + HDBSCAN using embeddings from a previous run:
+
+```bash
+python clustering compute-clusters \
+  --compute only-dimreduction-and-clustering \
+  --config /path/to/config_example_run_only_dimreduction_and_clustering.yaml
+```
 
 Use the `only-dimreduction-and-clustering` compute mode to skip DINOv2 and reuse
 cached outputs from a previous run. The directory passed in `dino_files` must
@@ -163,7 +155,15 @@ contain:
 The new outputs (`umap.npy`, `clusters.csv`, `images.txt`, `summary_clusters.csv`)
 are written to `output_dir`.
 
-## Rerun HDBSCAN without embeddings or UMAP
+### Rerun clustering (HDBSCAN) without embeddings (DINOv2) + dimensionality-reduction (UMAP)
+
+Run only HDBSCAN using UMAP outputs from a previous run:
+
+```bash
+python clustering compute-clusters \
+  --compute only-clustering \
+  --config /path/to/config_example_run_only_clustering.yaml
+```
 
 Use the `only-clustering` compute mode to skip DINOv2 and UMAP, reusing cached
 UMAP outputs from a previous run. The directory passed in `umap_files` must
@@ -175,11 +175,13 @@ contain:
 The new outputs (`clusters.csv`, `images.txt`, `summary_clusters.csv`) are written
 to `output_dir`.
 
-Generate a summary file from an existing clusters.csv:
+### Generate a summary file from an existing clusters.csv:
 
 ```bash
 python clustering compute-clusters --summarize-clusters /path/to/output/clusters.csv
 ```
+
+### Organize clustered outputs into folders
 
 Organize clustered outputs into folders (copies images and matching `.JSON` metadata, even if either the image or the JSON file is missing):
 
@@ -208,6 +210,9 @@ What `copy-crops-to-cluster-dirs` does:
 - Copies matching `.JSON` metadata files alongside the images, or uses `--json-only` to copy just metadata while leaving images in place.
 - Handles destination conflicts with `--on-conflict` (`rename`, `overwrite`, `skip`, or `error`) and supports `--dry-run` for previews.
 
+### Background color threshold calibration
+
+The pipeline can auto-crop images to remove background pixels.
 Estimate a good background distance threshold from sample images:
 
 ```bash
@@ -239,7 +244,7 @@ most important fields are:
 
 - `cropped_images_dir` (the older `input_image_dir` key is still accepted)
 - `output_dir`
-- `model_repo` (optional local clone path)
+- `dino_model` (optional local clone path)
 - `batch_size`
 - `num_workers`
 - `umap_dim`
@@ -257,6 +262,9 @@ most important fields are:
 
 For white backgrounds, set `background_color` to `[255, 255, 255]` and tune
 `autocrop_threshold` if needed.
+
+`model_repo` is still accepted for backward compatibility, but `dino_model` is the
+preferred config key going forward.
 
 ### UMAP and HDBSCAN configuration details
 
@@ -326,7 +334,7 @@ output_csv = clustering(
     umap_dim=30,
     hdbscan_min_cluster_size=25,
     two_pass=False,
-    model_repo="/path/to/dinov2",
+    dino_model="/path/to/dinov2",
 )
 ```
 

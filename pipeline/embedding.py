@@ -27,9 +27,9 @@ class DINOv2Embedder:
     def _load_model(self, model_name: str, device: str):
         auto_repo = auto_model_repo(self.cfg)
         if auto_repo is not None:
-            self.cfg.model_repo = auto_repo
+            self.cfg.dino_model = auto_repo
         try:
-            model = self._load_from_repo(model_name, self.cfg.model_repo)
+            model = self._load_from_repo(model_name, self.cfg.dino_model)
         except Exception as exc:  # pragma: no cover - runtime-only
             if self._is_ssl_cert_error(exc):
                 local_repo = _local_repo_hint()
@@ -44,7 +44,7 @@ class DINOv2Embedder:
                 "Ensure internet access on first run or cache the model locally. "
                 "If you are behind a custom SSL proxy or your Python install lacks certificates, "
                 "pass --ssl-ca-bundle /path/to/ca-bundle.pem (or set SSL_CERT_FILE) so HTTPS can verify. "
-                "You can also pass --model-repo /path/to/dinov2 (local clone) "
+                "You can also pass --dino-model /path/to/dinov2 (local clone) "
                 "or set DINOv2_REPO to a local repo path to avoid HTTPS."
             ) from exc
         return model.to(device)

@@ -52,12 +52,12 @@ def configure_ssl(cfg: PipelineConfig) -> None:
     else:
         ca_path = _discover_ca_bundle()
         if ca_path is None:
-            if not cfg.model_repo:
+            if not cfg.dino_model:
                 print(
                     "Warning: No CA bundle found for HTTPS verification. "
                     "If model download fails with SSL errors, pass "
                     "--ssl-ca-bundle /path/to/ca-bundle.pem or set SSL_CERT_FILE. "
-                    "Alternatively, set --model-repo to a local DINOv2 clone.",
+                    "Alternatively, set --dino-model to a local DINOv2 clone.",
                     file=sys.stderr,
                 )
             return

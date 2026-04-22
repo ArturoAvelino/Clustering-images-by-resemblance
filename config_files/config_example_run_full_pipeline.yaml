@@ -11,7 +11,7 @@ output_dir: "path/to/save/the/outputs/like/the/embeddings,/clusters.csv,/etc/"
 
 # Optional local clone path for the DINOv2 repo to avoid network downloads.
 # If omitted, torch.hub will fetch from GitHub on first run.
-model_repo: "path/to/dinov2/"
+dino_model: "path/to/dinov2/"
 
 # Minimum image file size (KB) to include; set to 0 or omit to disable.
 image_size_in_kbytes_min: 10

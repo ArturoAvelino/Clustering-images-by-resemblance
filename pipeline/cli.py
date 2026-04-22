@@ -52,7 +52,12 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
     parser.add_argument("--input-dir", help="Folder with input JPG images")
     parser.add_argument("--output-dir", help="Folder to store embeddings and CSV output")
     parser.add_argument("--model-name", help="DINOv2 model name")
-    parser.add_argument("--model-repo", help="Local clone path for the DINOv2 repo")
+    parser.add_argument("--dino-model", dest="dino_model", help="Local clone path for the DINOv2 repo")
+    parser.add_argument(
+        "--model-repo",
+        dest="dino_model",
+        help="Deprecated: use --dino-model for the local DINOv2 repo path",
+    )
     parser.add_argument("--ssl-ca-bundle", help="Path to a CA bundle PEM file for HTTPS verification")
     parser.add_argument("--img-size", type=int)
     parser.add_argument("--batch-size", type=int)
