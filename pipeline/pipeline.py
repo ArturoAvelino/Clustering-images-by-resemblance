@@ -254,6 +254,9 @@ def run_pipeline(cfg: PipelineConfig) -> Path:
     if cfg.compute == "only-dimreduction-and-clustering":
         final_csv = run_dimreduction_and_clustering(cfg, log_path, total_start)
         return final_csv
+    if cfg.compute == "only-clustering":
+        final_csv = run_clustering_only(cfg, log_path, total_start)
+        return final_csv
 
     ensure_deps(require_torch=True)
     auto_repo = auto_model_repo(cfg)
@@ -468,6 +471,75 @@ def run_dimreduction_and_clustering(
     )
     csv_dt = time.perf_counter() - t0
     csv_msg = f"[dim-reduction-only] CSV write: {_format_duration(csv_dt)}"
+    print(csv_msg)
+    _log_timing(log_path, csv_msg)
+
+    summarize_clusters_csv(output_paths.csv_path)
+    total_dt = time.perf_counter() - total_start
+    total_msg = f"[total] Pipeline runtime: {_format_duration(total_dt)}"
+    print(total_msg)
+    _log_timing(log_path, total_msg)
+    return output_paths.csv_path
+
+
+def run_clustering_only(cfg: PipelineConfig, log_path: Path, total_start: float) -> Path:
+    """Run HDBSCAN only using cached UMAP outputs."""
+    if cfg.umap_files is None:
+        raise ValueError("umap_files must be set for only-clustering.")
+    base_dir = cfg.umap_files
+    if not base_dir.exists():
+        raise ValueError(f"umap_files does not exist: {base_dir}")
+    input_paths = stage_paths(base_dir)
+    output_paths = stage_paths(cfg.output_dir)
+    required = {
+        "images.txt": input_paths.index_path,
+        "umap.npy": input_paths.umap_path,
+    }
+    missing = [name for name, path in required.items() if not path.exists()]
+    if missing:
+        missing_str = ", ".join(missing)
+        raise ValueError(
+            "Missing required UMAP artifacts for only-clustering: "
+            f"{missing_str} in {base_dir}"
+        )
+    with input_paths.index_path.open("r", encoding="utf-8") as f:
+        rel_paths = [line.strip() for line in f if line.strip()]
+    if not rel_paths:
+        raise ValueError(f"No image paths found in {input_paths.index_path}")
+    umap_data = np.load(input_paths.umap_path)
+    if umap_data.ndim != 2:
+        raise ValueError(f"umap.npy must be 2D, got shape={umap_data.shape}")
+    if umap_data.shape[0] != len(rel_paths):
+        raise ValueError(
+            "Mismatch between umap.npy rows and images.txt length. "
+            f"umap.npy={umap_data.shape[0]} images.txt={len(rel_paths)}"
+        )
+    output_paths.index_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_paths.index_path.open("w", encoding="utf-8") as f:
+        for rel in rel_paths:
+            f.write(rel + "\n")
+
+    t0 = time.perf_counter()
+    clusterer = HDBSCANClusterer(cfg)
+    result = clusterer.fit(input_paths.umap_path)
+    hdb_dt = time.perf_counter() - t0
+    hdb_msg = f"[clustering-only] HDBSCAN: {_format_duration(hdb_dt)}"
+    print(hdb_msg)
+    _log_timing(log_path, hdb_msg)
+
+    t0 = time.perf_counter()
+    dim_reduction = umap_data if cfg.write_dimreduction_vector else None
+    clusterer.write_csv(
+        output_paths.csv_path,
+        rel_paths,
+        result.labels,
+        result.probabilities,
+        result.outlier_scores,
+        result.exemplars,
+        dim_reduction,
+    )
+    csv_dt = time.perf_counter() - t0
+    csv_msg = f"[clustering-only] CSV write: {_format_duration(csv_dt)}"
     print(csv_msg)
     _log_timing(log_path, csv_msg)
 

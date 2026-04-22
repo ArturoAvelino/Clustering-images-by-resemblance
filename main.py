@@ -30,7 +30,9 @@ python clustering compute-clusters --input-dir /path/to/images --output-dir /pat
 python clustering compute-clusters --config /path/to/config.yaml --batch-size 8  # CLI overrides config
 python clustering compute-clusters --config /path/to/config.yaml --print-config
 python clustering compute-clusters --compute only-dimreduction-and-clustering \\
-  --config /path/to/config_example_only_dimreduction_and_clustering.yaml
+  --config /path/to/config_example_run_only_dimreduction_and_clustering.yaml
+python clustering compute-clusters --compute only-clustering \\
+  --config /path/to/config_example_run_only_clustering.yaml
 
 Example YAML config
 -------------------
@@ -48,7 +50,9 @@ write_dimreduction_vector: true
 
 An annotated YAML template is available at config_files/config_example_run_full_pipeline.yaml.
 For rerunning UMAP + HDBSCAN from cached DINOv2 outputs, use
-config_files/config_example_only_dimreduction_and_clustering.yaml.
+config_files/config_example_run_only_dimreduction_and_clustering.yaml.
+For rerunning HDBSCAN only using cached UMAP outputs, use
+config_files/config_example_run_only_clustering.yaml.
 
 Optional modes
 --------------
@@ -56,6 +60,7 @@ Optional modes
 - --fast-tune: quick pass only (for parameter tuning).
 - --no-autocrop: disable auto-crop to non-white pixels.
 - --compute only-dimreduction-and-clustering: skip embedding and reuse DINOv2 outputs.
+- --compute only-clustering: skip embedding and UMAP, reuse cached UMAP outputs.
 
 How to use (Python)
 -------------------

@@ -120,7 +120,15 @@ Run only UMAP + HDBSCAN using embeddings from a previous run:
 ```bash
 python clustering compute-clusters \
   --compute only-dimreduction-and-clustering \
-  --config /path/to/config_example_only_dimreduction_and_clustering.yaml
+  --config /path/to/config_example_run_only_dimreduction_and_clustering.yaml
+```
+
+Run only HDBSCAN using UMAP outputs from a previous run:
+
+```bash
+python clustering compute-clusters \
+  --compute only-clustering \
+  --config /path/to/config_example_run_only_clustering.yaml
 ```
 
 Show help for the clustering pipeline options:
@@ -154,6 +162,18 @@ contain:
 
 The new outputs (`umap.npy`, `clusters.csv`, `images.txt`, `summary_clusters.csv`)
 are written to `output_dir`.
+
+## Rerun HDBSCAN without embeddings or UMAP
+
+Use the `only-clustering` compute mode to skip DINOv2 and UMAP, reusing cached
+UMAP outputs from a previous run. The directory passed in `umap_files` must
+contain:
+
+- `umap.npy`
+- `images.txt`
+
+The new outputs (`clusters.csv`, `images.txt`, `summary_clusters.csv`) are written
+to `output_dir`.
 
 Generate a summary file from an existing clusters.csv:
 
@@ -212,7 +232,9 @@ What `calibrate_threshold.py` does:
 The annotated YAML template lives at `config_files/config_example_run_full_pipeline.yaml`
 and is the recommended starting point for full runs. A second template,
 `config_files/config_example_only_dimreduction_and_clustering.yaml`, shows the
-minimal inputs to rerun UMAP + HDBSCAN from cached DINOv2 outputs. The pipeline reads YAML configs directly. The
+minimal inputs to rerun UMAP + HDBSCAN from cached DINOv2 outputs. A third template,
+`config_files/config_example_only_clustering.yaml`, shows the minimal inputs to rerun
+HDBSCAN using cached UMAP outputs. The pipeline reads YAML configs directly. The
 most important fields are:
 
 - `cropped_images_dir` (the older `input_image_dir` key is still accepted)
@@ -229,11 +251,51 @@ most important fields are:
 - `autocrop_threshold` (color-distance threshold used to separate background from foreground)
 - `size_feature_weight` (higher values emphasize size)
 - `image_size_in_kbytes_min` / `image_size_in_kbytes_max` (optional file-size filter; KB = 1024 bytes)
-- `compute` (use `only-dimreduction-and-clustering` to skip embedding)
+- `compute` (use `only-dimreduction-and-clustering` to skip embedding, or `only-clustering` to skip embedding + UMAP)
 - `dino_files` (directory containing embeddings.dat, embeddings.json, sizes.npy, and images.txt)
+- `umap_files` (directory containing umap.npy and images.txt)
 
 For white backgrounds, set `background_color` to `[255, 255, 255]` and tune
 `autocrop_threshold` if needed.
+
+### UMAP and HDBSCAN configuration details
+
+Use these definitions to tune clustering behavior. All UMAP settings operate on
+the DINOv2 embedding vectors; HDBSCAN operates on the UMAP-reduced vectors.
+
+- `umap_dim`: Target dimensionality of the UMAP projection used for clustering.
+  Higher values preserve more structure from the original embeddings but
+  increase runtime and can make density-based clustering less distinct. Lower
+  values speed up HDBSCAN and can simplify structure but may discard relevant
+  variation. A practical starting range is 15-60; increase if clusters look
+  over-merged, decrease if clustering is noisy or unstable.
+- `umap_neighbors`: Number of nearest neighbors used to build the UMAP graph.
+  Smaller values emphasize local structure and can split fine-grained clusters.
+  Larger values emphasize global structure, smoothing the manifold and often
+  reducing the number of clusters. Typical values are 10-50; push lower for
+  fine-grained grouping, higher for broader grouping.
+- `umap_min_dist`: Minimum allowed distance between points in the UMAP space.
+  Lower values (close to 0.0) allow tight packing and compact clusters; higher
+  values spread points apart and can reduce very dense clumps. Start with 0.0-0.2
+  for cluster discovery, raise it if you see overly tight blobs.
+- `umap_metric`: Distance metric used by UMAP on the original embeddings.
+  `cosine` is a common choice for high-dimensional embeddings (including DINOv2)
+  because it focuses on angular similarity. `euclidean` can work but may be more
+  sensitive to embedding norm; only switch if you know your embeddings are
+  normalized or you have a clear reason.
+- `hdbscan_min_cluster_size`: Minimum cluster size HDBSCAN will consider. Smaller
+  values yield more (and smaller) clusters; larger values merge smaller groups
+  into noise or larger clusters. Set this to roughly the smallest cluster size
+  you care about.
+- `hdb_min_samples`: Minimum samples in a neighborhood for a point to be
+  considered a core point. Higher values make clustering more conservative and
+  increase the number of points labeled as noise; lower values are more liberal
+  but can create spurious clusters. A good starting point is 5-20 or the same
+  as `hdbscan_min_cluster_size` for stricter clustering.
+- `hdb_metric`: Distance metric used by HDBSCAN on the UMAP output. `euclidean`
+  is standard in low-dimensional UMAP spaces. Only change this if you have a
+  specific reason and can explain how distances should behave in the reduced
+  space.
 
 Size filtering is applied when `images.txt` is generated. If you change the size
 range after a run, delete `images.txt` or rerun with `--force` to rebuild it.
@@ -243,6 +305,11 @@ embedding step entirely and reads cached files from `dino_files`. You can point
 `dino_files` at the output directory of a previous run (for example
 `/path/to/output` or `/path/to/output/stages/pass1`) as long as it contains the
 required files.
+
+When using `compute: only-clustering`, the pipeline reads cached UMAP outputs
+from `umap_files`. You can point `umap_files` at the output directory of a
+previous run (for example `/path/to/output` or `/path/to/output/umap_hdbscan_only`)
+as long as it contains `umap.npy` and `images.txt`.
 
 ## Python API
 
@@ -286,6 +353,8 @@ The output directory contains:
 When `--two-pass` or `--fast-tune` is used, outputs are grouped under `output_dir/stages/`.
 When running `--compute only-dimreduction-and-clustering`, embeddings are read from
 `dino_files` while `umap.npy`, `clusters.csv`, and `images.txt` are written to `output_dir`.
+When running `--compute only-clustering`, `umap.npy` and `images.txt` are read from
+`umap_files`, while `clusters.csv` and `images.txt` are written to `output_dir`.
 
 ## Two-pass mode (pass 1 / pass 2)
 

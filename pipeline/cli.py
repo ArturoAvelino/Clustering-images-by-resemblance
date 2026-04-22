@@ -32,7 +32,7 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
     parser.add_argument("--print-config", action="store_true", help="Print merged config (YAML) and exit")
     parser.add_argument(
         "--compute",
-        choices=["full", "only-dimreduction-and-clustering"],
+        choices=["full", "only-dimreduction-and-clustering", "only-clustering"],
         help="Which stages to run (default: full pipeline).",
     )
     parser.add_argument(
@@ -40,6 +40,13 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
         help=(
             "Directory containing embeddings.dat, embeddings.json, sizes.npy, and images.txt "
             "from a previous run (required for only-dimreduction-and-clustering)."
+        ),
+    )
+    parser.add_argument(
+        "--umap-files",
+        help=(
+            "Directory containing umap.npy and images.txt from a previous run "
+            "(required for only-clustering)."
         ),
     )
     parser.add_argument("--input-dir", help="Folder with input JPG images")
@@ -120,7 +127,7 @@ def parse_args(argv: Optional[List[str]] = None, *, prog: Optional[str] = None) 
 def _write_config_record(cfg) -> None:
     output_dir = cfg.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
-    config_path = output_dir / "config_parameters_used.txt"
+    config_path = output_dir / "parameters_used.txt"
     config_path.write_text(config_to_yaml(cfg), encoding="utf-8")
 
 
