@@ -6,6 +6,8 @@ CLI entry point for the clustering pipeline.
 Usage:
   python clustering compute-clusters --input-dir /path/to/images --output-dir /path/to/output
   python clustering compute-clusters --config /path/to/config.yaml
+  python clustering compute-clusters --compute only-dimreduction-and-clustering \\
+    --config /path/to/config_example_only_dimreduction_and_clustering.yaml
   python clustering calibrate-threshold --input-dir /path/to/images --background-color 45,71,159
   python clustering copy-crops-to-cluster-dirs --clusters /path/to/output/clusters.csv \\
     --input-dir /path/to/images --dest-dir /path/to/clustered

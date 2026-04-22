@@ -29,6 +29,8 @@ How to use (CLI)
 python clustering compute-clusters --input-dir /path/to/images --output-dir /path/to/output
 python clustering compute-clusters --config /path/to/config.yaml --batch-size 8  # CLI overrides config
 python clustering compute-clusters --config /path/to/config.yaml --print-config
+python clustering compute-clusters --compute only-dimreduction-and-clustering \\
+  --config /path/to/config_example_only_dimreduction_and_clustering.yaml
 
 Example YAML config
 -------------------
@@ -45,12 +47,15 @@ image_size_in_kbytes_max: 99.99
 write_dimreduction_vector: true
 
 An annotated YAML template is available at config_files/config_example_run_full_pipeline.yaml.
+For rerunning UMAP + HDBSCAN from cached DINOv2 outputs, use
+config_files/config_example_only_dimreduction_and_clustering.yaml.
 
 Optional modes
 --------------
 - --two-pass: fast first pass + refine uncertain samples with full model.
 - --fast-tune: quick pass only (for parameter tuning).
 - --no-autocrop: disable auto-crop to non-white pixels.
+- --compute only-dimreduction-and-clustering: skip embedding and reuse DINOv2 outputs.
 
 How to use (Python)
 -------------------

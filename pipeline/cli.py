@@ -30,6 +30,18 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
     )
     parser.add_argument("--config", help="Path to YAML config file")
     parser.add_argument("--print-config", action="store_true", help="Print merged config (YAML) and exit")
+    parser.add_argument(
+        "--compute",
+        choices=["full", "only-dimreduction-and-clustering"],
+        help="Which stages to run (default: full pipeline).",
+    )
+    parser.add_argument(
+        "--dino-files",
+        help=(
+            "Directory containing embeddings.dat, embeddings.json, sizes.npy, and images.txt "
+            "from a previous run (required for only-dimreduction-and-clustering)."
+        ),
+    )
     parser.add_argument("--input-dir", help="Folder with input JPG images")
     parser.add_argument("--output-dir", help="Folder to store embeddings and CSV output")
     parser.add_argument("--model-name", help="DINOv2 model name")
@@ -105,6 +117,13 @@ def parse_args(argv: Optional[List[str]] = None, *, prog: Optional[str] = None) 
     return parser.parse_args(argv)
 
 
+def _write_config_record(cfg) -> None:
+    output_dir = cfg.output_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
+    config_path = output_dir / "config_parameters_used.txt"
+    config_path.write_text(config_to_yaml(cfg), encoding="utf-8")
+
+
 def main(argv: Optional[List[str]] = None, *, prog: Optional[str] = None) -> int:
     args = parse_args(argv, prog=prog)
     if args.summarize_clusters is not None:
@@ -112,6 +131,7 @@ def main(argv: Optional[List[str]] = None, *, prog: Optional[str] = None) -> int
         return 0
     cfg = build_config(args)
     validate_config(cfg)
+    _write_config_record(cfg)
     if args.print_config:
         print(config_to_yaml(cfg))
         return 0

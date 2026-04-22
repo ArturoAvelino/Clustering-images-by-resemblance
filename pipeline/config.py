@@ -11,8 +11,10 @@ import yaml
 
 @dataclass
 class PipelineConfig:
-    input_dir: Path
-    output_dir: Path
+    input_dir: Optional[Path] = None
+    output_dir: Path = Path("")
+    compute: str = "full"
+    dino_files: Optional[Path] = None
     model_name: str = "dinov2_vitb14"
     model_repo: Optional[str] = None
     ssl_ca_bundle: Optional[Path] = None
@@ -100,7 +102,7 @@ def load_config(path: Path) -> dict:
 
 
 def default_config_dict() -> dict:
-    placeholder = PipelineConfig(input_dir=Path(""), output_dir=Path(""))
+    placeholder = PipelineConfig()
     return dict(placeholder.__dict__)
 
 
@@ -112,6 +114,8 @@ def build_config(args) -> PipelineConfig:
     overrides = {
         "input_dir": args.input_dir,
         "output_dir": args.output_dir,
+        "compute": args.compute,
+        "dino_files": args.dino_files,
         "model_name": args.model_name,
         "model_repo": args.model_repo,
         "ssl_ca_bundle": args.ssl_ca_bundle,
@@ -150,22 +154,45 @@ def build_config(args) -> PipelineConfig:
         if value is not None:
             cfg_data[key] = value
 
-    if not cfg_data.get("input_dir"):
-        raise ValueError("input_dir is required (CLI --input-dir or config file).")
+    compute_mode = cfg_data.get("compute") or "full"
+    if compute_mode not in {"full", "only-dimreduction-and-clustering"}:
+        raise ValueError(
+            "compute must be 'full' or 'only-dimreduction-and-clustering'."
+        )
     if not cfg_data.get("output_dir"):
         raise ValueError("output_dir is required (CLI --output-dir or config file).")
+    if compute_mode == "only-dimreduction-and-clustering":
+        if not cfg_data.get("dino_files"):
+            raise ValueError(
+                "dino_files is required when compute=only-dimreduction-and-clustering."
+            )
+    else:
+        if not cfg_data.get("input_dir"):
+            raise ValueError("input_dir is required (CLI --input-dir or config file).")
 
-    cfg_data["input_dir"] = Path(cfg_data["input_dir"])
+    if cfg_data.get("input_dir") is not None:
+        cfg_data["input_dir"] = Path(cfg_data["input_dir"])
     cfg_data["output_dir"] = Path(cfg_data["output_dir"])
     if cfg_data.get("background_color") is not None:
         cfg_data["background_color"] = tuple(int(x) for x in cfg_data["background_color"])
     if cfg_data.get("ssl_ca_bundle"):
         cfg_data["ssl_ca_bundle"] = Path(cfg_data["ssl_ca_bundle"])
+    if cfg_data.get("dino_files") is not None:
+        cfg_data["dino_files"] = Path(cfg_data["dino_files"])
     return PipelineConfig(**cfg_data)
 
 
 def validate_config(cfg: PipelineConfig) -> None:
     errors: List[str] = []
+    if cfg.compute not in {"full", "only-dimreduction-and-clustering"}:
+        errors.append("compute must be 'full' or 'only-dimreduction-and-clustering'")
+    if cfg.compute == "only-dimreduction-and-clustering":
+        if cfg.dino_files is None:
+            errors.append("dino_files is required when compute=only-dimreduction-and-clustering")
+        if cfg.two_pass or cfg.fast_tune:
+            errors.append("two_pass and fast_tune are not supported when compute=only-dimreduction-and-clustering")
+    if cfg.compute == "full" and cfg.input_dir is None:
+        errors.append("input_dir is required when compute=full")
     if cfg.img_size <= 0:
         errors.append("img_size must be > 0")
     if cfg.batch_size <= 0:
@@ -227,10 +254,14 @@ def validate_config(cfg: PipelineConfig) -> None:
 
 def config_to_yaml(cfg: PipelineConfig) -> str:
     data = cfg.__dict__.copy()
-    data["cropped_images_dir"] = str(data.pop("input_dir"))
+    input_dir = data.pop("input_dir", None)
+    if input_dir is not None:
+        data["cropped_images_dir"] = str(input_dir)
     data["output_dir"] = str(data["output_dir"])
     if data.get("ssl_ca_bundle") is not None:
         data["ssl_ca_bundle"] = str(data["ssl_ca_bundle"])
+    if data.get("dino_files") is not None:
+        data["dino_files"] = str(data["dino_files"])
     return yaml.safe_dump(data, sort_keys=True)
 
 

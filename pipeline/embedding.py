@@ -192,8 +192,8 @@ def resolve_device() -> str:
     return "cpu"
 
 
-def ensure_deps() -> None:
-    if torch is None or transforms is None:
+def ensure_deps(*, require_torch: bool = True) -> None:
+    if require_torch and (torch is None or transforms is None):
         raise RuntimeError(
             "Missing required dependencies. Install: torch, torchvision, umap-learn, hdbscan, pillow, numpy."
         )

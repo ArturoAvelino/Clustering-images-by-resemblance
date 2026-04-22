@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 from typing import List
@@ -250,7 +251,11 @@ def run_pipeline(cfg: PipelineConfig) -> Path:
     log_path = cfg.output_dir / "timings.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     _log_timing(log_path, "=== Pipeline timing log ===")
-    ensure_deps()
+    if cfg.compute == "only-dimreduction-and-clustering":
+        final_csv = run_dimreduction_and_clustering(cfg, log_path, total_start)
+        return final_csv
+
+    ensure_deps(require_torch=True)
     auto_repo = auto_model_repo(cfg)
     if auto_repo is not None:
         cfg.model_repo = auto_repo
@@ -387,6 +392,91 @@ def run_pipeline(cfg: PipelineConfig) -> Path:
     print(total_msg)
     _log_timing(log_path, total_msg)
     return paths.csv_path
+
+
+def run_dimreduction_and_clustering(
+    cfg: PipelineConfig, log_path: Path, total_start: float
+) -> Path:
+    if cfg.dino_files is None:
+        raise ValueError("dino_files must be set for only-dimreduction-and-clustering.")
+    base_dir = cfg.dino_files
+    if not base_dir.exists():
+        raise ValueError(f"dino_files does not exist: {base_dir}")
+    input_paths = stage_paths(base_dir)
+    output_paths = stage_paths(cfg.output_dir)
+    required = {
+        "images.txt": input_paths.index_path,
+        "embeddings.dat": input_paths.emb_path,
+        "embeddings.json": input_paths.meta_path,
+        "sizes.npy": input_paths.size_path,
+    }
+    missing = [name for name, path in required.items() if not path.exists()]
+    if missing:
+        missing_str = ", ".join(missing)
+        raise ValueError(
+            "Missing required DINOv2 artifacts for only-dimreduction-and-clustering: "
+            f"{missing_str} in {base_dir}"
+        )
+    with input_paths.index_path.open("r", encoding="utf-8") as f:
+        rel_paths = [line.strip() for line in f if line.strip()]
+    if not rel_paths:
+        raise ValueError(f"No image paths found in {input_paths.index_path}")
+    with input_paths.meta_path.open("r", encoding="utf-8") as f:
+        meta = json.load(f)
+    expected = int(meta.get("num_images", -1))
+    if expected > 0 and expected != len(rel_paths):
+        raise ValueError(
+            "Mismatch between embeddings.json num_images and images.txt length. "
+            f"num_images={expected} images.txt={len(rel_paths)}"
+        )
+    output_paths.index_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_paths.index_path.open("w", encoding="utf-8") as f:
+        for rel in rel_paths:
+            f.write(rel + "\n")
+
+    t0 = time.perf_counter()
+    reducer = UMAPReducer(cfg)
+    reducer.reduce(
+        input_paths.emb_path,
+        input_paths.meta_path,
+        input_paths.size_path,
+        output_paths.umap_path,
+    )
+    umap_dt = time.perf_counter() - t0
+    umap_msg = f"[dim-reduction-only] UMAP reduction: {_format_duration(umap_dt)}"
+    print(umap_msg)
+    _log_timing(log_path, umap_msg)
+
+    t0 = time.perf_counter()
+    clusterer = HDBSCANClusterer(cfg)
+    result = clusterer.fit(output_paths.umap_path)
+    hdb_dt = time.perf_counter() - t0
+    hdb_msg = f"[dim-reduction-only] HDBSCAN: {_format_duration(hdb_dt)}"
+    print(hdb_msg)
+    _log_timing(log_path, hdb_msg)
+
+    t0 = time.perf_counter()
+    dim_reduction = np.load(output_paths.umap_path) if cfg.write_dimreduction_vector else None
+    clusterer.write_csv(
+        output_paths.csv_path,
+        rel_paths,
+        result.labels,
+        result.probabilities,
+        result.outlier_scores,
+        result.exemplars,
+        dim_reduction,
+    )
+    csv_dt = time.perf_counter() - t0
+    csv_msg = f"[dim-reduction-only] CSV write: {_format_duration(csv_dt)}"
+    print(csv_msg)
+    _log_timing(log_path, csv_msg)
+
+    summarize_clusters_csv(output_paths.csv_path)
+    total_dt = time.perf_counter() - total_start
+    total_msg = f"[total] Pipeline runtime: {_format_duration(total_dt)}"
+    print(total_msg)
+    _log_timing(log_path, total_msg)
+    return output_paths.csv_path
 
 
 def clustering(

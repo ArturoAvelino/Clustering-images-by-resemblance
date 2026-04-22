@@ -1,0 +1,41 @@
+# Example configuration for rerunning UMAP + HDBSCAN without recomputing embeddings.
+# This YAML is the source of truth for configuration.
+# Keys map 1:1 to the pipeline configuration fields.
+
+# Tell the pipeline to skip DINOv2 embedding and reuse cached files.
+compute: "only-dimreduction-and-clustering"
+
+# Directory containing embeddings.dat, embeddings.json, sizes.npy, and images.txt
+# from a previous run of the pipeline.
+dino_files: "/path/to/output"
+
+# Directory where the new outputs (umap.npy, clusters.csv, images.txt) will be written.
+output_dir: "/path/to/output/umap_hdbscan_only"
+
+# Weight applied to the size feature when clustering.
+# 0.0 disables the size feature; higher values make size more influential.
+size_feature_weight: 0.0
+
+# Target dimensionality-reduction from UMAP.
+umap_dim: 30
+
+# Number of nearest neighbors used by UMAP.
+umap_neighbors: 30
+
+# UMAP minimum distance between points.
+umap_min_dist: 0.0
+
+# UMAP distance metric.
+umap_metric: "cosine"
+
+# Minimum cluster size for HDBSCAN (smaller values produce more clusters).
+hdbscan_min_cluster_size: 25
+
+# HDBSCAN minimum samples (higher values produce more conservative clusters).
+hdb_min_samples: 10
+
+# HDBSCAN distance metric.
+hdb_metric: "euclidean"
+
+# Write the UMAP vector to the dim_reduction column in clusters.csv.
+write_dimreduction_vector: true

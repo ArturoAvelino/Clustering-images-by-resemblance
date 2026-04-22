@@ -115,6 +115,14 @@ Basic run:
 python clustering compute-clusters --input-dir /path/to/images --output-dir /path/to/output
 ```
 
+Run only UMAP + HDBSCAN using embeddings from a previous run:
+
+```bash
+python clustering compute-clusters \
+  --compute only-dimreduction-and-clustering \
+  --config /path/to/config_example_only_dimreduction_and_clustering.yaml
+```
+
 Show help for the clustering pipeline options:
 
 ```bash
@@ -132,6 +140,20 @@ Print the values of all the config variables used, including default interval va
 ```bash
 python clustering compute-clusters --config /path/to/config.yaml --print-config
 ```
+
+## Rerun UMAP + HDBSCAN without embeddings
+
+Use the `only-dimreduction-and-clustering` compute mode to skip DINOv2 and reuse
+cached outputs from a previous run. The directory passed in `dino_files` must
+contain:
+
+- `embeddings.dat`
+- `embeddings.json`
+- `sizes.npy`
+- `images.txt`
+
+The new outputs (`umap.npy`, `clusters.csv`, `images.txt`, `summary_clusters.csv`)
+are written to `output_dir`.
 
 Generate a summary file from an existing clusters.csv:
 
@@ -187,8 +209,10 @@ What `calibrate_threshold.py` does:
 
 ## Input Configuration File
 
-The annotated YAML template lives at `config_files/config_example.yaml` and is
-the recommended starting point. The pipeline reads YAML configs directly. The
+The annotated YAML template lives at `config_files/config_example_run_full_pipeline.yaml`
+and is the recommended starting point for full runs. A second template,
+`config_files/config_example_only_dimreduction_and_clustering.yaml`, shows the
+minimal inputs to rerun UMAP + HDBSCAN from cached DINOv2 outputs. The pipeline reads YAML configs directly. The
 most important fields are:
 
 - `cropped_images_dir` (the older `input_image_dir` key is still accepted)
@@ -205,12 +229,20 @@ most important fields are:
 - `autocrop_threshold` (color-distance threshold used to separate background from foreground)
 - `size_feature_weight` (higher values emphasize size)
 - `image_size_in_kbytes_min` / `image_size_in_kbytes_max` (optional file-size filter; KB = 1024 bytes)
+- `compute` (use `only-dimreduction-and-clustering` to skip embedding)
+- `dino_files` (directory containing embeddings.dat, embeddings.json, sizes.npy, and images.txt)
 
 For white backgrounds, set `background_color` to `[255, 255, 255]` and tune
 `autocrop_threshold` if needed.
 
 Size filtering is applied when `images.txt` is generated. If you change the size
 range after a run, delete `images.txt` or rerun with `--force` to rebuild it.
+
+When using `compute: only-dimreduction-and-clustering`, the pipeline skips the
+embedding step entirely and reads cached files from `dino_files`. You can point
+`dino_files` at the output directory of a previous run (for example
+`/path/to/output` or `/path/to/output/stages/pass1`) as long as it contains the
+required files.
 
 ## Python API
 
@@ -252,6 +284,8 @@ The output directory contains:
 - `images.txt` (stable list of image paths used)
 
 When `--two-pass` or `--fast-tune` is used, outputs are grouped under `output_dir/stages/`.
+When running `--compute only-dimreduction-and-clustering`, embeddings are read from
+`dino_files` while `umap.npy`, `clusters.csv`, and `images.txt` are written to `output_dir`.
 
 ## Two-pass mode (pass 1 / pass 2)
 
