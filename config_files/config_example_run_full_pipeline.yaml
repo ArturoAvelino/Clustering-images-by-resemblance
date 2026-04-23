@@ -14,10 +14,10 @@ output_dir: "path/to/save/the/outputs/like/the/embeddings,/clusters.csv,/etc/"
 dino_model: "path/to/dinov2/"
 
 # Minimum image file size (KB) to include; set to 0 or omit to disable.
-image_size_in_kbytes_min: 10
+# image_size_in_kbytes_min: 10
 
 # Maximum image file size (KB) to include; omit to disable.
-image_size_in_kbytes_max: 99.99
+# image_size_in_kbytes_max: 99.99
 
 # Background RGB color used for auto-crop thresholding.
 # Format is [R, G, B] with 0-255 values.
