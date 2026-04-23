@@ -11,6 +11,9 @@ Usage:
   python clustering calibrate-threshold --input-dir /path/to/images --background-color 45,71,159
   python clustering copy-crops-to-cluster-dirs --clusters /path/to/output/clusters.csv \\
     --input-dir /path/to/images --dest-dir /path/to/clustered
+  python clustering copy-crops-to-cluster-dirs --clusters /path/to/output/clusters.csv \\
+    --input-dir /path/to/images --dest-dir /path/to/clustered \\
+    --subdir-confidence 0.9 --subdir-outliers 0.1
 """
 
 import sys

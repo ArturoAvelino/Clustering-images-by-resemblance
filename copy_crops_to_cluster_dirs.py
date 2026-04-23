@@ -10,20 +10,25 @@ What this script does
 Reads a ``clusters.csv`` file produced by the pipeline and copies image files
 into subfolders named after their cluster label (the value in the ``cluster``
 column). The CSV can contain extra metadata columns (for example probabilities
-or outlier scores); only ``image_id`` and ``cluster`` are required. The script
-uses the ``image_id`` column to locate each image relative to ``--input-dir``
-and then copies the file into a cluster folder. If a matching ``.JSON`` file
-exists with the same basename as the image, it is copied alongside the image
-into the same cluster folder. This makes it easy to review clustered outputs in
-a filesystem browser while keeping the original folder structure intact (unless
-``--flat`` is specified).
+or outlier scores); only ``image_id`` and ``cluster`` are required unless you
+enable confidence/outlier subdirectories. The script uses the ``image_id``
+column to locate each image relative to ``--input-dir`` and then copies the
+file into a cluster folder. If a matching ``.JSON`` file exists with the same
+basename as the image, it is copied alongside the image into the same cluster
+folder. This makes it easy to review clustered outputs in a filesystem browser
+while keeping the original folder structure intact (unless ``--flat`` is
+specified).
 
 Inputs
 ------
 - ``--clusters``: Path to the ``clusters.csv`` file. The CSV must have columns
-  ``image_id`` and ``cluster`` (extra columns are ignored).
+  ``image_id`` and ``cluster`` (extra columns are ignored unless you enable
+  confidence/outlier subdirectories).
 - ``--input-dir``: Root directory for the images listed in ``image_id``. The
   pipeline writes ``image_id`` values as paths relative to the input directory.
+- ``--subdir-confidence``: Requires ``probabilities`` and ``outlier_scores``
+  columns in ``clusters.csv``.
+- ``--subdir-outliers``: Requires ``outlier_scores`` in ``clusters.csv``.
 
 Outputs
 -------
@@ -31,6 +36,9 @@ Outputs
   images into those folders.
 - By default, the folder structure under each cluster mirrors the original
   relative paths; use ``--flat`` to avoid nested subfolders.
+- Optionally creates per-cluster subdirectories for representative images and
+  outliers using ``--subdir-confidence`` and ``--subdir-outliers``. These copy
+  images only (not JSON) and are ignored when ``--json-only`` is set.
 - Use ``--json-only`` to copy only the matching ``.JSON`` files while leaving
   images in place.
 - Prints a summary of copied, skipped, and missing files, including JSON copied
@@ -53,6 +61,12 @@ Preview changes without copying files::
   python clustering copy-crops-to-cluster-dirs --clusters /path/to/output/clusters.csv \\
     --input-dir /path/to/images --dry-run
 
+Copy high-confidence representatives and outliers into subdirectories::
+
+  python clustering copy-crops-to-cluster-dirs --clusters /path/to/output/clusters.csv \\
+    --input-dir /path/to/images --dest-dir /path/to/clustered \\
+    --subdir-confidence 0.9 --subdir-outliers 0.1
+
 Conflict handling
 -----------------
 If a destination file already exists, the default behavior is to rename the
@@ -66,6 +80,7 @@ import argparse
 import csv
 import shutil
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
@@ -116,12 +131,52 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--subdir-confidence",
+        type=_parse_threshold,
+        default=None,
+        help=(
+            "Create a per-cluster subdirectory named "
+            "representatives_confid_XX and copy images with probabilities >= XX "
+            "and outlier_scores <= 0.1. Ignored with --json-only."
+        ),
+    )
+    parser.add_argument(
+        "--subdir-outliers",
+        type=_parse_threshold,
+        default=None,
+        help=(
+            "Create a per-cluster subdirectory named outliers_YY and copy "
+            "images with outlier_scores >= YY. Ignored with --json-only."
+        ),
+    )
+    parser.add_argument(
         "--on-conflict",
         choices=("rename", "overwrite", "skip", "error"),
         default="rename",
         help="What to do if the destination file already exists.",
     )
     return parser.parse_args(argv)
+
+
+@dataclass(frozen=True)
+class ThresholdSpec:
+    value: float
+    label: str
+
+
+def _parse_threshold(raw: str) -> ThresholdSpec:
+    raw = raw.strip()
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            f"Invalid float value: {raw!r}"
+        ) from exc
+    if not 0.0 <= value <= 1.0:
+        raise argparse.ArgumentTypeError(
+            "Value must be between 0.0 and 1.0."
+        )
+    return ThresholdSpec(value=value, label=raw)
 
 
 def _normalize_cluster(raw: str) -> str:
@@ -132,6 +187,16 @@ def _normalize_cluster(raw: str) -> str:
         return str(int(float(raw)))
     except ValueError:
         return raw
+
+
+def _parse_float_field(row: dict[str, str], field: str) -> float | None:
+    raw = (row.get(field) or "").strip()
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        return None
 
 
 def _resolve_conflict(dest: Path, mode: str) -> Path | None:
@@ -211,6 +276,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     copied_images = 0
     copied_json = 0
     copied_json_without_image = 0
+    copied_confidence = 0
+    copied_outliers = 0
     skipped = 0
     missing_images = 0
     missing_json = 0
@@ -223,6 +290,28 @@ def main(argv: Optional[List[str]] = None) -> int:
         if "image_id" not in reader.fieldnames or "cluster" not in reader.fieldnames:
             print(
                 "clusters.csv must have columns: image_id, cluster",
+                file=sys.stderr,
+            )
+            return 2
+        if args.subdir_confidence is not None:
+            if "probabilities" not in reader.fieldnames:
+                print(
+                    "clusters.csv must include probabilities when "
+                    "--subdir-confidence is used",
+                    file=sys.stderr,
+                )
+                return 2
+            if "outlier_scores" not in reader.fieldnames:
+                print(
+                    "clusters.csv must include outlier_scores when "
+                    "--subdir-confidence is used",
+                    file=sys.stderr,
+                )
+                return 2
+        if args.subdir_outliers is not None and "outlier_scores" not in reader.fieldnames:
+            print(
+                "clusters.csv must include outlier_scores when "
+                "--subdir-outliers is used",
                 file=sys.stderr,
             )
             return 2
@@ -303,6 +392,43 @@ def main(argv: Optional[List[str]] = None) -> int:
                             copied_json_without_image += 1
                     else:
                         missing_json += 1
+                    if image_exists:
+                        if args.subdir_confidence is not None:
+                            prob = _parse_float_field(row, "probabilities")
+                            outlier = _parse_float_field(row, "outlier_scores")
+                            if (
+                                prob is not None
+                                and outlier is not None
+                                and prob >= args.subdir_confidence.value
+                                and outlier <= 0.1
+                            ):
+                                subdir = (
+                                    dest_dir
+                                    / cluster
+                                    / f"representatives_confid_{args.subdir_confidence.label}"
+                                )
+                                sub_dest = (
+                                    subdir / rel_path.name
+                                    if args.flat
+                                    else subdir / rel_path
+                                )
+                                print(f"{src} -> {sub_dest}")
+                                copied_confidence += 1
+                        if args.subdir_outliers is not None:
+                            outlier = _parse_float_field(row, "outlier_scores")
+                            if outlier is not None and outlier >= args.subdir_outliers.value:
+                                subdir = (
+                                    dest_dir
+                                    / cluster
+                                    / f"outliers_{args.subdir_outliers.label}"
+                                )
+                                sub_dest = (
+                                    subdir / rel_path.name
+                                    if args.flat
+                                    else subdir / rel_path
+                                )
+                                print(f"{src} -> {sub_dest}")
+                                copied_outliers += 1
                 continue
 
             if args.json_only:
@@ -328,11 +454,63 @@ def main(argv: Optional[List[str]] = None) -> int:
                 else:
                     missing_json += 1
 
+                if image_exists:
+                    if args.subdir_confidence is not None:
+                        prob = _parse_float_field(row, "probabilities")
+                        outlier = _parse_float_field(row, "outlier_scores")
+                        if (
+                            prob is not None
+                            and outlier is not None
+                            and prob >= args.subdir_confidence.value
+                            and outlier <= 0.1
+                        ):
+                            subdir = (
+                                dest_dir
+                                / cluster
+                                / f"representatives_confid_{args.subdir_confidence.label}"
+                            )
+                            sub_dest = (
+                                subdir / rel_path.name
+                                if args.flat
+                                else subdir / rel_path
+                            )
+                            resolved = _resolve_conflict(sub_dest, args.on_conflict)
+                            if resolved is None:
+                                skipped += 1
+                            else:
+                                resolved.parent.mkdir(parents=True, exist_ok=True)
+                                shutil.copy2(str(src), str(resolved))
+                                copied_confidence += 1
+                    if args.subdir_outliers is not None:
+                        outlier = _parse_float_field(row, "outlier_scores")
+                        if outlier is not None and outlier >= args.subdir_outliers.value:
+                            subdir = (
+                                dest_dir
+                                / cluster
+                                / f"outliers_{args.subdir_outliers.label}"
+                            )
+                            sub_dest = (
+                                subdir / rel_path.name
+                                if args.flat
+                                else subdir / rel_path
+                            )
+                            resolved = _resolve_conflict(sub_dest, args.on_conflict)
+                            if resolved is None:
+                                skipped += 1
+                            else:
+                                resolved.parent.mkdir(parents=True, exist_ok=True)
+                                shutil.copy2(str(src), str(resolved))
+                                copied_outliers += 1
+
     print(f"Copied images: {copied_images}")
     if copied_json:
         print(f"Copied JSON: {copied_json}")
     if copied_json_without_image:
         print(f"Copied JSON without image: {copied_json_without_image}")
+    if copied_confidence:
+        print(f"Copied confidence representatives: {copied_confidence}")
+    if copied_outliers:
+        print(f"Copied outlier images: {copied_outliers}")
     if skipped:
         print(f"Skipped: {skipped}")
     if missing_images:
