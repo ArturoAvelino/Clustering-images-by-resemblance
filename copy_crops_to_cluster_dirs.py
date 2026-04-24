@@ -65,7 +65,7 @@ Copy high-confidence representatives and outliers into subdirectories::
 
   python clustering copy-crops-to-cluster-dirs --clusters /path/to/output/clusters.csv \\
     --input-dir /path/to/images --dest-dir /path/to/clustered \\
-    --subdir-confidence 0.9 --subdir-outliers 0.1
+    --subdir-confidence 0.9 --subdir-outliers 0.8
 
 Conflict handling
 -----------------
@@ -137,7 +137,7 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help=(
             "Create a per-cluster subdirectory named "
             "representatives_confid_XX and copy images with probabilities >= XX "
-            "and outlier_scores <= 0.1. Ignored with --json-only."
+            "and outlier_scores <= 0.01. Ignored with --json-only."
         ),
     )
     parser.add_argument(
@@ -400,7 +400,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                                 prob is not None
                                 and outlier is not None
                                 and prob >= args.subdir_confidence.value
-                                and outlier <= 0.1
+                                and outlier <= 0.01
                             ):
                                 subdir = (
                                     dest_dir
@@ -462,7 +462,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                             prob is not None
                             and outlier is not None
                             and prob >= args.subdir_confidence.value
-                            and outlier <= 0.1
+                            and outlier <= 0.01
                         ):
                             subdir = (
                                 dest_dir

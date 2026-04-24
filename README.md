@@ -202,7 +202,7 @@ Copy high-confidence representatives and outliers into per-cluster subdirectorie
 ```bash
 python clustering copy-crops-to-cluster-dirs --clusters /path/to/output/clusters.csv \
   --input-dir /path/to/images --dest-dir /path/to/clustered \
-  --subdir-confidence 0.9 --subdir-outliers 0.1
+  --subdir-confidence 0.99 --subdir-outliers 0.8
 ```
 
 Show help for the cluster directory copy options:
@@ -217,7 +217,7 @@ What `copy-crops-to-cluster-dirs` does:
 - Uses the `image_id` column as a path relative to `--input-dir` and mirrors the original subfolder structure under each cluster unless `--flat` is provided.
 - Copies matching `.JSON` metadata files alongside the images, or uses `--json-only` to copy just metadata while leaving images in place.
 - Optionally creates per-cluster subdirectories:
-  `representatives_confid_XX` for images with `probabilities >= XX` and `outlier_scores <= 0.1`,
+  `representatives_confid_XX` for images with `probabilities >= XX` and `outlier_scores <= 0.01`,
   and `outliers_YY` for images with `outlier_scores >= YY`. These are skipped when `--json-only` is used.
 - Handles destination conflicts with `--on-conflict` (`rename`, `overwrite`, `skip`, or `error`) and supports `--dry-run` for previews.
 
