@@ -33,6 +33,12 @@ python clustering compute-clusters --compute only-dimreduction-and-clustering \\
   --config /path/to/config_example_run_only_dimreduction_and_clustering.yaml
 python clustering compute-clusters --compute only-clustering \\
   --config /path/to/config_example_run_only_clustering.yaml
+python clustering copy-crops-to-subdirs-representative --clusters-file /path/to/file/clusters.csv \\
+  --input-dir /path/to/images --dest-dir /path/to/clustered \\
+  --probability 0.99 --outlier-score 0.001
+python clustering copy-crops-to-subdir-outliers --clusters-file /path/to/file/clusters.csv \\
+  --input-dir /path/to/images --dest-dir /path/to/clustered \\
+  --probability 0.3 --outlier-score 0.7
 
 Example YAML config
 -------------------

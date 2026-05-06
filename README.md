@@ -107,6 +107,8 @@ CLI commands:
 | --- | --- |
 | `compute-clusters` | Run the DINOv2 → UMAP → HDBSCAN clustering pipeline. |
 | `copy-crops-to-cluster-dirs` | Copy clustered images/JSON into cluster-labeled folders. |
+| `copy-crops-to-subdirs-representative` | Copy high-probability, low-outlier-score crop images into threshold-labeled per-cluster representative subdirectories. |
+| `copy-crops-to-subdir-outliers` | Copy low-probability, high-outlier-score crop images into threshold-labeled per-cluster outlier subdirectories. |
 | `calibrate-threshold` | Estimate a background color distance threshold for auto-cropping. |
 
 Basic run:
@@ -178,32 +180,66 @@ to `output_dir`.
 ### Generate a summary file from an existing clusters.csv:
 
 ```bash
-python clustering compute-clusters --summarize-clusters /path/to/output/clusters.csv
+python clustering compute-clusters --summarize-clusters /path/to/file/clusters.csv
 ```
 
 ### Organize clustered outputs into folders
 
-Organize clustered outputs into folders (copies images and matching `.JSON` metadata, even if either the image or the JSON file is missing):
+Organize clustered outputs into folders (copies images and matching `.JSON` metadata, 
+even if either the image or the JSON file is missing):
 
 ```bash
-python clustering copy-crops-to-cluster-dirs --clusters /path/to/output/clusters.csv \
+python clustering copy-crops-to-cluster-dirs --clusters-file /path/to/file/clusters.csv \
   --input-dir /path/to/images --dest-dir /path/to/clustered
 ```
 
 Copy only `.JSON` metadata (leave images in place):
 
 ```bash
-python clustering copy-crops-to-cluster-dirs --clusters /path/to/output/clusters.csv \
+python clustering copy-crops-to-cluster-dirs --clusters-file /path/to/file/clusters.csv \
   --input-dir /path/to/images --dest-dir /path/to/clustered --json-only
 ```
 
 Copy high-confidence representatives and outliers into per-cluster subdirectories:
 
 ```bash
-python clustering copy-crops-to-cluster-dirs --clusters /path/to/output/clusters.csv \
+python clustering copy-crops-to-cluster-dirs --clusters-file /path/to/file/clusters.csv \
   --input-dir /path/to/images --dest-dir /path/to/clustered \
-  --subdir-confidence 0.99 --subdir-outliers 0.8
+  --subdir-representative 0.99 --subdir-outliers 0.8
 ```
+
+Create only the representative-image subdirectories:
+
+```bash
+python clustering copy-crops-to-subdirs-representative \
+  --clusters-file /path/to/file/clusters.csv \
+  --input-dir /path/to/crop_image_files/directory \
+  --dest-dir /path/to/clustered/directory \
+  --probability 0.99 \
+  --outlier-score 0.001
+```
+
+This command reads `image_id`, `cluster`, `probabilities`, and `outlier_scores`
+from `clusters.csv`. For each row where `probabilities >= 0.99` and
+`outlier_scores <= 0.001`, it copies the crop image from `--input-dir` into
+`<dest-dir>/<cluster>/representative_prob_0.99_outlierscore_0.001/`. For
+example, an image in cluster `16` is copied under
+`/path/to/clustered/directory/16/representative_prob_0.99_outlierscore_0.001/`.
+
+Create only the outlier-image subdirectories:
+
+```bash
+python clustering copy-crops-to-subdir-outliers \
+  --clusters-file /path/to/file/clusters.csv \
+  --input-dir /path/to/crop_image_files/directory \
+  --dest-dir /path/to/clustered/directory \
+  --probability 0.3 \
+  --outlier-score 0.7
+```
+
+This command applies the inverted selection rule. It copies rows where
+`probabilities <= 0.3` and `outlier_scores >= 0.7` into
+`<dest-dir>/<cluster>/outliers_prob_0.3_outlierscore_0.7/`.
 
 Show help for the cluster directory copy options:
 
@@ -217,8 +253,9 @@ What `copy-crops-to-cluster-dirs` does:
 - Uses the `image_id` column as a path relative to `--input-dir` and mirrors the original subfolder structure under each cluster unless `--flat` is provided.
 - Copies matching `.JSON` metadata files alongside the images, or uses `--json-only` to copy just metadata while leaving images in place.
 - Optionally creates per-cluster subdirectories:
-  `representatives_confid_XX` for images with `probabilities >= XX` and `outlier_scores <= 0.01`,
-  and `outliers_YY` for images with `outlier_scores >= YY`. These are skipped when `--json-only` is used.
+  `representative_prob_X_outlierscore_0.001` for images with `probabilities >= X` and `outlier_scores <= 0.001`,
+  and `outliers_score_Y` for images with `outlier_scores >= Y`. These are skipped when `--json-only` is used.
+- `copy-crops-to-subdirs-representative` and `copy-crops-to-subdir-outliers` copy selected crop images only; they do not copy `.JSON` metadata. Their destination subdirectory names include the thresholds used in the command, for example `representative_prob_0.99_outlierscore_0.001` and `outliers_prob_0.3_outlierscore_0.7`.
 - Handles destination conflicts with `--on-conflict` (`rename`, `overwrite`, `skip`, or `error`) and supports `--dry-run` for previews.
 
 ### Background color threshold calibration

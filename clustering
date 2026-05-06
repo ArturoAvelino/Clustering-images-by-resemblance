@@ -9,18 +9,20 @@ Usage:
   python clustering compute-clusters --compute only-dimreduction-and-clustering \\
     --config /path/to/config_example_only_dimreduction_and_clustering.yaml
   python clustering calibrate-threshold --input-dir /path/to/images --background-color 45,71,159
-  python clustering copy-crops-to-cluster-dirs --clusters /path/to/output/clusters.csv \\
+  python clustering copy-crops-to-cluster-dirs --clusters-file /path/to/output/clusters.csv \\
     --input-dir /path/to/images --dest-dir /path/to/clustered
-  python clustering copy-crops-to-cluster-dirs --clusters /path/to/output/clusters.csv \\
+  python clustering copy-crops-to-cluster-dirs --clusters-file /path/to/output/clusters.csv \\
     --input-dir /path/to/images --dest-dir /path/to/clustered \\
-    --subdir-confidence 0.9 --subdir-outliers 0.1
+    --subdir-representative 0.9 --subdir-outliers 0.1
+  python clustering copy-crops-to-subdirs-representative --clusters-file /path/to/output/clusters.csv \\
+    --input-dir /path/to/images --dest-dir /path/to/clustered \\
+    --probability 0.99 --outlier-score 0.001
+  python clustering copy-crops-to-subdir-outliers --clusters-file /path/to/output/clusters.csv \\
+    --input-dir /path/to/images --dest-dir /path/to/clustered \\
+    --probability 0.3 --outlier-score 0.7
 """
 
 import sys
-
-import calibrate_threshold as _calibrate_threshold
-import copy_crops_to_cluster_dirs as _copy_crops_to_cluster_dirs
-from pipeline.cli import main as _pipeline_main
 
 
 def _print_top_level_help() -> None:
@@ -29,6 +31,8 @@ def _print_top_level_help() -> None:
         "  python clustering compute-clusters [options]\n"
         "  python clustering calibrate-threshold [options]\n"
         "  python clustering copy-crops-to-cluster-dirs [options]\n\n"
+        "  python clustering copy-crops-to-subdirs-representative [options]\n"
+        "  python clustering copy-crops-to-subdir-outliers [options]\n\n"
         "Run `python clustering <command> --help` for help with each command."
     )
 
@@ -43,11 +47,25 @@ def main(argv: list[str] | None = None) -> int:
 
     command, *rest = argv
     if command == "compute-clusters":
+        from pipeline.cli import main as _pipeline_main
+
         return _pipeline_main(rest, prog="python clustering compute-clusters")
     if command == "calibrate-threshold":
+        import calibrate_threshold as _calibrate_threshold
+
         return _calibrate_threshold.main(rest)
     if command == "copy-crops-to-cluster-dirs":
+        import copy_crops_to_cluster_dirs as _copy_crops_to_cluster_dirs
+
         return _copy_crops_to_cluster_dirs.main(rest)
+    if command == "copy-crops-to-subdirs-representative":
+        import copy_crops_to_cluster_dirs as _copy_crops_to_cluster_dirs
+
+        return _copy_crops_to_cluster_dirs.create_subdir_representative(rest)
+    if command == "copy-crops-to-subdir-outliers":
+        import copy_crops_to_cluster_dirs as _copy_crops_to_cluster_dirs
+
+        return _copy_crops_to_cluster_dirs.create_subdir_outliers(rest)
 
     print(f"Unknown command: {command}", file=sys.stderr)
     _print_top_level_help()
