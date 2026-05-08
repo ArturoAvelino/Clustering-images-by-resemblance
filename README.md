@@ -208,6 +208,25 @@ python clustering copy-crops-to-cluster-dirs --clusters-file /path/to/file/clust
   --subdir-representative 0.99 --subdir-outliers 0.8
 ```
 
+Show help for the cluster directory copy options:
+
+```bash
+python clustering copy-crops-to-cluster-dirs --help
+```
+
+What `copy-crops-to-cluster-dirs` does:
+
+- Reads `clusters.csv` and groups images into subfolders named after their cluster ID (for example `0/`, `1/`, `-1/` for noise).
+- Uses the `image_id` column as a path relative to `--input-dir` and mirrors the original subfolder structure under each cluster unless `--flat` is provided.
+- Copies matching `.JSON` metadata files alongside the images, or uses `--json-only` to copy just metadata while leaving images in place.
+- Optionally creates per-cluster subdirectories:
+  `representative_prob_X_outlierscore_0.001` for images with `probabilities >= X` and `outlier_scores <= 0.001`,
+  and `outliers_score_Y` for images with `outlier_scores >= Y`. These are skipped when `--json-only` is used.
+- `copy-crops-to-subdirs-representative` and `copy-crops-to-subdir-outliers` copy selected crop images only; they do not copy `.JSON` metadata. Their destination subdirectory names include the thresholds used in the command, for example `representative_prob_0.99_outlierscore_0.001` and `outliers_prob_0.3_outlierscore_0.7`.
+- Handles destination conflicts with `--on-conflict` (`rename`, `overwrite`, `skip`, or `error`) and supports `--dry-run` for previews.
+
+### Copy representative and outlier crop images into subdirectories, based on probability and outlier score thresholds provided by the user
+
 Create only the representative-image subdirectories:
 
 ```bash
@@ -240,23 +259,6 @@ python clustering copy-crops-to-subdir-outliers \
 This command applies the inverted selection rule. It copies rows where
 `probabilities <= 0.3` and `outlier_scores >= 0.7` into
 `<dest-dir>/<cluster>/outliers_prob_0.3_outlierscore_0.7/`.
-
-Show help for the cluster directory copy options:
-
-```bash
-python clustering copy-crops-to-cluster-dirs --help
-```
-
-What `copy-crops-to-cluster-dirs` does:
-
-- Reads `clusters.csv` and groups images into subfolders named after their cluster ID (for example `0/`, `1/`, `-1/` for noise).
-- Uses the `image_id` column as a path relative to `--input-dir` and mirrors the original subfolder structure under each cluster unless `--flat` is provided.
-- Copies matching `.JSON` metadata files alongside the images, or uses `--json-only` to copy just metadata while leaving images in place.
-- Optionally creates per-cluster subdirectories:
-  `representative_prob_X_outlierscore_0.001` for images with `probabilities >= X` and `outlier_scores <= 0.001`,
-  and `outliers_score_Y` for images with `outlier_scores >= Y`. These are skipped when `--json-only` is used.
-- `copy-crops-to-subdirs-representative` and `copy-crops-to-subdir-outliers` copy selected crop images only; they do not copy `.JSON` metadata. Their destination subdirectory names include the thresholds used in the command, for example `representative_prob_0.99_outlierscore_0.001` and `outliers_prob_0.3_outlierscore_0.7`.
-- Handles destination conflicts with `--on-conflict` (`rename`, `overwrite`, `skip`, or `error`) and supports `--dry-run` for previews.
 
 ### Background color threshold calibration
 
