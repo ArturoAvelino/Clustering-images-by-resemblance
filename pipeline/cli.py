@@ -119,7 +119,7 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
     parser.add_argument(
         "--summarize-clusters",
         type=Path,
-        help="Generate summary_clusters.csv from an existing clusters.csv and exit.",
+        help="Generate clusters_summary.csv from an existing clusters.csv and exit.",
     )
     parser.add_argument(
         "--summarize-classes-in-clusters",

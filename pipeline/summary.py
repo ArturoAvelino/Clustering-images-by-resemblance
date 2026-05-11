@@ -27,34 +27,48 @@ def summarize_clusters_csv(
     clusters_path: Path,
     output_path: Path | None = None,
 ) -> Path:
+    """
+    Generate clusters_summary.csv from clusters.csv.
+
+    The output contains one row per cluster with the normalized cluster ID, the
+    number of objects assigned to the cluster, and the number of distinct image
+    classes in the cluster. Class IDs are extracted with the same rule used by
+    clusters_summary_classes.csv: the last 4 characters of each image filename
+    stem.
+    """
     if output_path is None:
-        output_path = clusters_path.with_name("summary_clusters.csv")
+        output_path = clusters_path.with_name("clusters_summary.csv")
 
     if not clusters_path.exists():
         raise FileNotFoundError(f"clusters.csv not found: {clusters_path}")
 
     counts: Counter[str] = Counter()
+    classes_by_cluster: dict[str, set[str]] = {}
     with clusters_path.open("r", encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
         if reader.fieldnames is None:
             raise ValueError("clusters.csv has no header row")
         if "cluster" not in reader.fieldnames:
             raise ValueError("clusters.csv must have a 'cluster' column")
+        if "image_id" not in reader.fieldnames:
+            raise ValueError("clusters.csv must have an 'image_id' column")
         for row in reader:
             cluster_raw = row.get("cluster")
-            if cluster_raw is None:
+            image_id = row.get("image_id", "")
+            if cluster_raw is None or not image_id:
                 continue
             cluster = _normalize_cluster(cluster_raw)
             if not cluster:
                 continue
             counts[cluster] += 1
+            classes_by_cluster.setdefault(cluster, set()).add(_extract_class_id(image_id))
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["cluster", "num_obj_in_cluster"])
+        writer.writerow(["cluster_id", "num_objs_in_cluster", "num_classes_in_cluster"])
         for cluster in sorted(counts.keys(), key=_sort_key):
-            writer.writerow([cluster, counts[cluster]])
+            writer.writerow([cluster, counts[cluster], len(classes_by_cluster[cluster])])
 
     return output_path
 

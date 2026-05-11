@@ -20,6 +20,8 @@ Outputs
 -------
 - clusters.csv: columns [image_id, cluster, probabilities, outlier_scores, dim_reduction]
   (noise labeled as -1; dim_reduction is a JSON array unless write_dimreduction_vector is false).
+- clusters_summary.csv: columns [cluster_id, num_objs_in_cluster, num_classes_in_cluster].
+- clusters_summary_classes.csv: per-cluster class counts and percentages.
 - embeddings.dat / embeddings.json: saved embedding matrix + metadata.
 - umap.npy: reduced vectors used for clustering.
 - images.txt: stable list of image paths used for the run.

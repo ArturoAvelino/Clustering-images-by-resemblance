@@ -154,7 +154,7 @@ contain:
 - `sizes.npy`
 - `images.txt`
 
-The new outputs (`umap.npy`, `clusters.csv`, `images.txt`, `summary_clusters.csv`)
+The new outputs (`umap.npy`, `clusters.csv`, `images.txt`, `clusters_summary.csv`)
 are written to `output_dir`.
 
 ### Rerun clustering (HDBSCAN) without embeddings (DINOv2) + dimensionality-reduction (UMAP)
@@ -174,7 +174,7 @@ contain:
 - `umap.npy`
 - `images.txt`
 
-The new outputs (`clusters.csv`, `images.txt`, `summary_clusters.csv`) are written
+The new outputs (`clusters.csv`, `images.txt`, `clusters_summary.csv`) are written
 to `output_dir`.
 
 ### Generate a summary file from an existing clusters.csv:
@@ -182,6 +182,11 @@ to `output_dir`.
 ```bash
 python clustering compute-clusters --summarize-clusters /path/to/file/clusters.csv
 ```
+
+This writes `clusters_summary.csv` next to `clusters.csv` with one row per
+cluster. Its columns are `cluster_id`, `num_objs_in_cluster`, and
+`num_classes_in_cluster`. The class count uses the same class extraction rule as
+`clusters_summary_classes.csv`.
 
 ### Generate a per-class breakdown of clusters:
 
@@ -445,7 +450,7 @@ The output directory contains:
   (noise is `-1`; `dim_reduction` is a JSON array of
   UMAP values, length = `umap_dim` unless `write_dimreduction_vector: false`,
   in which case the column is empty)
-- `summary_clusters.csv` with columns `[cluster, num_obj_in_cluster]`
+- `clusters_summary.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster]`
 - `clusters_summary_classes.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster, class_X, class_X_%_of_the_cluster, ...]` — one row per cluster, one set of columns per class found across the dataset. Class is extracted from the last 4 characters of each image filename stem. Add `class_X_%_of_total_class` columns by supplying `--classes-benchmark-file`.
 - `embeddings.dat` and `embeddings.json` (embedding matrix + metadata)
 - `umap.npy` (UMAP-reduced vectors)
