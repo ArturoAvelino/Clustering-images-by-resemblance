@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """
 Generate clusters_dominant_classes_and_diff.csv from clusters_summary_classes.csv.
+Also writes clustering_score_report.csv next to it.
 
 Usage:
   python generate_clusters_dominants_and_diff.py /path/to/clusters_summary_classes.csv
@@ -22,7 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Read clusters_summary_classes.csv and write "
             "clusters_dominant_classes_and_diff.csv with the dominant class, "
             "second-dominant class, object counts, and percentage difference "
-            "for each cluster."
+            "for each cluster. Also writes clustering_score_report.csv."
         )
     )
     parser.add_argument(

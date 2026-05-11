@@ -9,6 +9,7 @@ from .pipeline import run_pipeline
 from .summary import (
     summarize_classes_in_clusters_csv,
     summarize_cluster_dominant_classes_and_diff_csv,
+    summarize_clustering_score_report_csv,
     summarize_clusters_csv,
 )
 
@@ -154,6 +155,15 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
             "clusters_summary_classes.csv and exit."
         ),
     )
+    parser.add_argument(
+        "--summary-scores",
+        type=Path,
+        dest="summary_scores",
+        help=(
+            "Generate clustering_score_report.csv from an existing "
+            "clusters_dominant_classes_and_diff.csv and exit."
+        ),
+    )
     return parser
 
 
@@ -183,6 +193,9 @@ def main(argv: Optional[List[str]] = None, *, prog: Optional[str] = None) -> int
         return 0
     if args.summarize_dominants_and_diff is not None:
         summarize_cluster_dominant_classes_and_diff_csv(args.summarize_dominants_and_diff)
+        return 0
+    if args.summary_scores is not None:
+        summarize_clustering_score_report_csv(args.summary_scores)
         return 0
     cfg = build_config(args)
     validate_config(cfg)

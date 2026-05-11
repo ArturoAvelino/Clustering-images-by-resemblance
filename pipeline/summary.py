@@ -52,6 +52,32 @@ def _read_count(row: dict[str, str], column: str, cluster_id: str) -> str:
         ) from exc
 
 
+def _read_float(row: dict[str, str], column: str, cluster_id: str) -> float:
+    raw_value = str(row.get(column, "")).strip()
+    if not raw_value:
+        return 0.0
+    try:
+        return float(raw_value)
+    except ValueError as exc:
+        raise ValueError(
+            f"Invalid numeric value for cluster {cluster_id}, column {column}: "
+            f"{raw_value!r}"
+        ) from exc
+
+
+def _read_int(row: dict[str, str], column: str, cluster_id: str) -> int:
+    raw_value = str(row.get(column, "")).strip()
+    if not raw_value:
+        return 0
+    try:
+        return int(float(raw_value))
+    except ValueError as exc:
+        raise ValueError(
+            f"Invalid integer value for cluster {cluster_id}, column {column}: "
+            f"{raw_value!r}"
+        ) from exc
+
+
 def summarize_clusters_csv(
     clusters_path: Path,
     output_path: Path | None = None,
@@ -236,6 +262,88 @@ def summarize_cluster_dominant_classes_and_diff_csv(
             ]
         )
         writer.writerows(rows)
+
+    summarize_clustering_score_report_csv(output_path)
+    return output_path
+
+
+def summarize_clustering_score_report_csv(
+    dominant_classes_path: Path,
+    output_path: Path | None = None,
+) -> Path:
+    """
+    Generate clustering_score_report.csv from clusters_dominant_classes_and_diff.csv.
+
+    The report contains one row with aggregate scores computed from every
+    cluster except cluster ``-1``: the sum of ``diff_1st-2nd_%``, the sum of
+    ``num_classes_in_cluster``, and the number of distinct classes appearing in
+    ``1st_dom_class``. It also reports ``num_objs_in_noise_cluster`` from the
+    ``num_objs_in_cluster`` value in the cluster ``-1`` row.
+    """
+    if output_path is None:
+        output_path = dominant_classes_path.with_name("clustering_score_report.csv")
+
+    if not dominant_classes_path.exists():
+        raise FileNotFoundError(
+            f"clusters_dominant_classes_and_diff.csv not found: {dominant_classes_path}"
+        )
+
+    with dominant_classes_path.open("r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        if reader.fieldnames is None:
+            raise ValueError("clusters_dominant_classes_and_diff.csv has no header row")
+        required_columns = [
+            "cluster_id",
+            "num_objs_in_cluster",
+            "num_classes_in_cluster",
+            "1st_dom_class",
+            "diff_1st-2nd_%",
+        ]
+        for column in required_columns:
+            if column not in reader.fieldnames:
+                raise ValueError(
+                    "clusters_dominant_classes_and_diff.csv must have a "
+                    f"{column!r} column"
+                )
+
+        sum_diff = 0.0
+        sum_num_classes = 0
+        num_objs_in_noise_cluster = 0
+        dominant_classes: set[str] = set()
+        for row in reader:
+            cluster_id = str(row.get("cluster_id", "")).strip()
+            if not cluster_id:
+                continue
+            if cluster_id == "-1":
+                num_objs_in_noise_cluster = _read_int(
+                    row, "num_objs_in_cluster", cluster_id
+                )
+                continue
+            sum_diff += _read_float(row, "diff_1st-2nd_%", cluster_id)
+            sum_num_classes += _read_int(row, "num_classes_in_cluster", cluster_id)
+            dominant_class = str(row.get("1st_dom_class", "")).strip()
+            if dominant_class:
+                dominant_classes.add(dominant_class)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            [
+                "sum_diff_1st-2nd_%",
+                "sum_num_classes_in_cluster",
+                "num_dom_classes",
+                "num_objs_in_noise_cluster",
+            ]
+        )
+        writer.writerow(
+            [
+                _format_percent(sum_diff),
+                sum_num_classes,
+                len(dominant_classes),
+                num_objs_in_noise_cluster,
+            ]
+        )
 
     return output_path
 

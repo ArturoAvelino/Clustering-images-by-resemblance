@@ -22,7 +22,7 @@ from .summary import (
 
 
 def summarize_cluster_outputs(clusters_csv_path: Path, benchmark_path: Path | None = None) -> None:
-    """Write all cluster summary CSV files derived from clusters.csv."""
+    """Write all cluster summary and score-report CSV files derived from clusters.csv."""
     summarize_clusters_csv(clusters_csv_path)
     summary_classes_path = summarize_classes_in_clusters_csv(clusters_csv_path, benchmark_path)
     summarize_cluster_dominant_classes_and_diff_csv(summary_classes_path)

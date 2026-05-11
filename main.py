@@ -24,6 +24,9 @@ Outputs
 - clusters_summary_classes.csv: per-cluster class counts and percentages.
 - clusters_dominant_classes_and_diff.csv: dominant and second-dominant class
   counts and percentages per cluster, plus their percentage difference.
+- clustering_score_report.csv: aggregate dominance scores computed from
+  clusters_dominant_classes_and_diff.csv, excluding cluster -1 for score sums
+  and reporting the number of objects in cluster -1.
 - embeddings.dat / embeddings.json: saved embedding matrix + metadata.
 - umap.npy: reduced vectors used for clustering.
 - images.txt: stable list of image paths used for the run.
@@ -88,6 +91,7 @@ from pipeline.config import PipelineConfig
 from pipeline.pipeline import clustering, run_pipeline
 from pipeline.summary import (
     summarize_cluster_dominant_classes_and_diff_csv,
+    summarize_clustering_score_report_csv,
     summarize_clusters_csv,
 )
 
@@ -101,6 +105,7 @@ __all__ = [
     "clustering",
     "run_pipeline",
     "summarize_cluster_dominant_classes_and_diff_csv",
+    "summarize_clustering_score_report_csv",
     "summarize_clusters_csv",
     "parse_args",
     "main",
