@@ -51,6 +51,7 @@ class PipelineConfig:
     write_dimreduction_vector: bool = True
     force: bool = False
     torch_threads: Optional[int] = None
+    classes_benchmark_file: Optional[Path] = None
 
 
 @dataclass
@@ -156,6 +157,7 @@ def build_config(args) -> PipelineConfig:
         "write_dimreduction_vector": args.write_dimreduction_vector,
         "force": args.force,
         "torch_threads": args.torch_threads,
+        "classes_benchmark_file": getattr(args, "classes_benchmark_file", None),
     }
     for key, value in overrides.items():
         if value is not None:
@@ -191,6 +193,8 @@ def build_config(args) -> PipelineConfig:
         cfg_data["dino_files"] = Path(cfg_data["dino_files"])
     if cfg_data.get("umap_files") is not None:
         cfg_data["umap_files"] = Path(cfg_data["umap_files"])
+    if cfg_data.get("classes_benchmark_file") is not None:
+        cfg_data["classes_benchmark_file"] = Path(cfg_data["classes_benchmark_file"])
     return PipelineConfig(**cfg_data)
 
 
@@ -283,6 +287,8 @@ def config_to_yaml(cfg: PipelineConfig) -> str:
         data["dino_files"] = str(data["dino_files"])
     if data.get("umap_files") is not None:
         data["umap_files"] = str(data["umap_files"])
+    if data.get("classes_benchmark_file") is not None:
+        data["classes_benchmark_file"] = str(data["classes_benchmark_file"])
     return yaml.safe_dump(data, sort_keys=True)
 
 

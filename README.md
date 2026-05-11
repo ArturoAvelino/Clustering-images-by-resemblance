@@ -183,6 +183,48 @@ to `output_dir`.
 python clustering compute-clusters --summarize-clusters /path/to/file/clusters.csv
 ```
 
+### Generate a per-class breakdown of clusters:
+
+`clusters_summary_classes.csv` is written automatically every time the pipeline
+runs. It contains one row per cluster with counts and percentages for each image
+class found in the dataset.
+
+The class of each image is extracted from the last 4 characters of its filename
+stem (e.g. `A01-A_r5c4_obj_280286_class_4218.jpg` → class `4218`).
+
+To regenerate the file from an existing `clusters.csv` without re-running the
+pipeline:
+
+```bash
+python clustering compute-clusters \
+  --summarize-classes-in-clusters /path/to/file/clusters.csv
+```
+
+To also include `class_X_%_of_total_class` columns (what fraction of each
+class's total dataset images fall in each cluster), supply a benchmark CSV with
+columns `label_id` and `count`:
+
+```bash
+python clustering compute-clusters \
+  --summarize-classes-in-clusters /path/to/file/clusters.csv \
+  --classes-benchmark-file /path/to/classes_benchmark.csv
+```
+
+The `classes_benchmark.csv` file looks like:
+
+```
+label_id,count
+4196,29879
+4197,421
+4198,11
+4200,2378
+...
+```
+
+To have the pipeline use a benchmark file on every run, either pass
+`--classes-benchmark-file` alongside `--input-dir` / `--output-dir`, or add
+`classes_benchmark_file: /path/to/classes_benchmark.csv` to your YAML config.
+
 ### Organize clustered outputs into folders
 
 Organize clustered outputs into folders (copies images and matching `.JSON` metadata, 
@@ -404,6 +446,7 @@ The output directory contains:
   UMAP values, length = `umap_dim` unless `write_dimreduction_vector: false`,
   in which case the column is empty)
 - `summary_clusters.csv` with columns `[cluster, num_obj_in_cluster]`
+- `clusters_summary_classes.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster, class_X, class_X_%_of_the_cluster, ...]` — one row per cluster, one set of columns per class found across the dataset. Class is extracted from the last 4 characters of each image filename stem. Add `class_X_%_of_total_class` columns by supplying `--classes-benchmark-file`.
 - `embeddings.dat` and `embeddings.json` (embedding matrix + metadata)
 - `umap.npy` (UMAP-reduced vectors)
 - `images.txt` (stable list of image paths used)

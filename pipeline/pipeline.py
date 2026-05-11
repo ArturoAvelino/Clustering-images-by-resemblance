@@ -14,7 +14,7 @@ from .data import ImageDataset, ImageIndex, compute_size_features
 from .embedding import DINOv2Embedder, ensure_deps, resolve_device
 from .model_repo import auto_model_repo
 from .ssl_utils import configure_ssl
-from .summary import summarize_clusters_csv
+from .summary import summarize_classes_in_clusters_csv, summarize_clusters_csv
 
 
 def stage_dir(cfg: PipelineConfig, stage: str) -> Path:
@@ -301,6 +301,7 @@ def run_pipeline(cfg: PipelineConfig) -> Path:
             log_path=log_path,
         )
         summarize_clusters_csv(paths.csv_path)
+        summarize_classes_in_clusters_csv(paths.csv_path, cfg.classes_benchmark_file)
         total_dt = time.perf_counter() - total_start
         total_msg = f"[total] Pipeline runtime: {_format_duration(total_dt)}"
         print(total_msg)
@@ -337,6 +338,7 @@ def run_pipeline(cfg: PipelineConfig) -> Path:
                 pass1_umap,
             )
             summarize_clusters_csv(final_csv)
+            summarize_classes_in_clusters_csv(final_csv, cfg.classes_benchmark_file)
             total_dt = time.perf_counter() - total_start
             total_msg = f"[total] Pipeline runtime: {_format_duration(total_dt)}"
             print(total_msg)
@@ -373,6 +375,7 @@ def run_pipeline(cfg: PipelineConfig) -> Path:
             merged_umap,
         )
         summarize_clusters_csv(final_csv)
+        summarize_classes_in_clusters_csv(final_csv, cfg.classes_benchmark_file)
         total_dt = time.perf_counter() - total_start
         total_msg = f"[total] Pipeline runtime: {_format_duration(total_dt)}"
         print(total_msg)
@@ -390,6 +393,7 @@ def run_pipeline(cfg: PipelineConfig) -> Path:
         log_path=log_path,
     )
     summarize_clusters_csv(paths.csv_path)
+    summarize_classes_in_clusters_csv(paths.csv_path, cfg.classes_benchmark_file)
     total_dt = time.perf_counter() - total_start
     total_msg = f"[total] Pipeline runtime: {_format_duration(total_dt)}"
     print(total_msg)
@@ -475,6 +479,7 @@ def run_dimreduction_and_clustering(
     _log_timing(log_path, csv_msg)
 
     summarize_clusters_csv(output_paths.csv_path)
+    summarize_classes_in_clusters_csv(output_paths.csv_path, cfg.classes_benchmark_file)
     total_dt = time.perf_counter() - total_start
     total_msg = f"[total] Pipeline runtime: {_format_duration(total_dt)}"
     print(total_msg)
@@ -544,6 +549,7 @@ def run_clustering_only(cfg: PipelineConfig, log_path: Path, total_start: float)
     _log_timing(log_path, csv_msg)
 
     summarize_clusters_csv(output_paths.csv_path)
+    summarize_classes_in_clusters_csv(output_paths.csv_path, cfg.classes_benchmark_file)
     total_dt = time.perf_counter() - total_start
     total_msg = f"[total] Pipeline runtime: {_format_duration(total_dt)}"
     print(total_msg)

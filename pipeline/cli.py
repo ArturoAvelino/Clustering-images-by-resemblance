@@ -6,7 +6,7 @@ from typing import List, Optional, Tuple
 
 from .config import build_config, config_to_yaml, validate_config
 from .pipeline import run_pipeline
-from .summary import summarize_clusters_csv
+from .summary import summarize_classes_in_clusters_csv, summarize_clusters_csv
 
 
 def _parse_rgb(value: str) -> Tuple[int, int, int]:
@@ -121,6 +121,26 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
         type=Path,
         help="Generate summary_clusters.csv from an existing clusters.csv and exit.",
     )
+    parser.add_argument(
+        "--summarize-classes-in-clusters",
+        type=Path,
+        dest="summarize_classes_in_clusters",
+        help=(
+            "Generate clusters_summary_classes.csv from an existing clusters.csv and exit. "
+            "Extracts the class ID from the last 4 characters of each image filename stem. "
+            "Use together with --classes-benchmark-file to include %%_of_total_class columns."
+        ),
+    )
+    parser.add_argument(
+        "--classes-benchmark-file",
+        type=Path,
+        dest="classes_benchmark_file",
+        help=(
+            "Path to a CSV with columns 'label_id' and 'count' giving the total number of "
+            "images per class in the dataset. Used to compute class_X_%%_of_total_class "
+            "columns in clusters_summary_classes.csv."
+        ),
+    )
     return parser
 
 
@@ -140,6 +160,12 @@ def main(argv: Optional[List[str]] = None, *, prog: Optional[str] = None) -> int
     args = parse_args(argv, prog=prog)
     if args.summarize_clusters is not None:
         summarize_clusters_csv(args.summarize_clusters)
+        return 0
+    if args.summarize_classes_in_clusters is not None:
+        summarize_classes_in_clusters_csv(
+            args.summarize_classes_in_clusters,
+            benchmark_path=getattr(args, "classes_benchmark_file", None),
+        )
         return 0
     cfg = build_config(args)
     validate_config(cfg)
