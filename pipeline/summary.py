@@ -331,7 +331,7 @@ def summarize_clustering_score_report_csv(
         writer.writerow(
             [
                 "sum_diff_1st-2nd_%",
-                "sum_num_classes_in_cluster",
+                "sum_num_classes_in_clusters",
                 "num_dom_classes",
                 "num_objs_in_noise_cluster",
             ]
