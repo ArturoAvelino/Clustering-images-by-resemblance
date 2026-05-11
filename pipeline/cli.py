@@ -8,7 +8,7 @@ from .config import build_config, config_to_yaml, validate_config
 from .pipeline import run_pipeline
 from .summary import (
     summarize_classes_in_clusters_csv,
-    summarize_cluster_dominants_and_diff_csv,
+    summarize_cluster_dominant_classes_and_diff_csv,
     summarize_clusters_csv,
 )
 
@@ -150,7 +150,7 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
         type=Path,
         dest="summarize_dominants_and_diff",
         help=(
-            "Generate clusters_dominants_and_diff.csv from an existing "
+            "Generate clusters_dominant_classes_and_diff.csv from an existing "
             "clusters_summary_classes.csv and exit."
         ),
     )
@@ -179,10 +179,10 @@ def main(argv: Optional[List[str]] = None, *, prog: Optional[str] = None) -> int
             args.summarize_classes_in_clusters,
             benchmark_path=getattr(args, "classes_benchmark_file", None),
         )
-        summarize_cluster_dominants_and_diff_csv(summary_classes_path)
+        summarize_cluster_dominant_classes_and_diff_csv(summary_classes_path)
         return 0
     if args.summarize_dominants_and_diff is not None:
-        summarize_cluster_dominants_and_diff_csv(args.summarize_dominants_and_diff)
+        summarize_cluster_dominant_classes_and_diff_csv(args.summarize_dominants_and_diff)
         return 0
     cfg = build_config(args)
     validate_config(cfg)

@@ -35,6 +35,23 @@ def _class_from_cluster_percent_column(column_name: str) -> str | None:
     return None
 
 
+def _class_count_column(class_id: str) -> str:
+    return f"class_{class_id}"
+
+
+def _read_count(row: dict[str, str], column: str, cluster_id: str) -> str:
+    raw_value = str(row.get(column, "")).strip()
+    if not raw_value:
+        return "0"
+    try:
+        return str(int(float(raw_value)))
+    except ValueError as exc:
+        raise ValueError(
+            f"Invalid object count for cluster {cluster_id}, column {column}: "
+            f"{raw_value!r}"
+        ) from exc
+
+
 def summarize_clusters_csv(
     clusters_path: Path,
     output_path: Path | None = None,
@@ -85,21 +102,26 @@ def summarize_clusters_csv(
     return output_path
 
 
-def summarize_cluster_dominants_and_diff_csv(
+def summarize_cluster_dominant_classes_and_diff_csv(
     summary_classes_path: Path,
     output_path: Path | None = None,
 ) -> Path:
     """
-    Generate clusters_dominants_and_diff.csv from clusters_summary_classes.csv.
+    Generate clusters_dominant_classes_and_diff.csv from clusters_summary_classes.csv.
 
     The output keeps one row per cluster and reports the class with the largest
-    ``class_X_%_of_the_cluster`` value, the class with the second-largest value,
-    and the percentage difference between them. If the dominant class accounts
-    for 100% of the cluster and no other class has a positive percentage, the
-    second dominant class is written as ``0000`` with percentage ``0``.
+    ``class_X_%_of_the_cluster`` value, the matching ``class_X`` object count,
+    the class with the second-largest percentage and its count, and the
+    percentage difference between them. It also copies ``num_objs_in_cluster``
+    and ``num_classes_in_cluster`` from the source file. If the dominant class
+    accounts for 100% of the cluster and no other class has a positive
+    percentage, the second dominant class is written as ``0000`` with percentage
+    ``0`` and object count ``0``.
     """
     if output_path is None:
-        output_path = summary_classes_path.with_name("clusters_dominants_and_diff.csv")
+        output_path = summary_classes_path.with_name(
+            "clusters_dominant_classes_and_diff.csv"
+        )
 
     if not summary_classes_path.exists():
         raise FileNotFoundError(
@@ -112,12 +134,26 @@ def summarize_cluster_dominants_and_diff_csv(
             raise ValueError("clusters_summary_classes.csv has no header row")
         if "cluster_id" not in reader.fieldnames:
             raise ValueError("clusters_summary_classes.csv must have a 'cluster_id' column")
+        if "num_objs_in_cluster" not in reader.fieldnames:
+            raise ValueError(
+                "clusters_summary_classes.csv must have a 'num_objs_in_cluster' column"
+            )
+        if "num_classes_in_cluster" not in reader.fieldnames:
+            raise ValueError(
+                "clusters_summary_classes.csv must have a 'num_classes_in_cluster' column"
+            )
 
         class_columns: list[tuple[str, str]] = []
         for field in reader.fieldnames:
             class_id = _class_from_cluster_percent_column(field)
             if class_id is not None:
                 class_columns.append((class_id, field))
+                count_field = _class_count_column(class_id)
+                if count_field not in reader.fieldnames:
+                    raise ValueError(
+                        "clusters_summary_classes.csv must contain matching "
+                        f"{count_field} count column for {field}"
+                    )
         if not class_columns:
             raise ValueError(
                 "clusters_summary_classes.csv must contain class_X_%_of_the_cluster columns"
@@ -128,6 +164,8 @@ def summarize_cluster_dominants_and_diff_csv(
             cluster_id = str(row.get("cluster_id", "")).strip()
             if not cluster_id:
                 continue
+            num_objs = str(row.get("num_objs_in_cluster", "")).strip()
+            num_classes = str(row.get("num_classes_in_cluster", "")).strip()
             values: list[tuple[str, float]] = []
             for class_id, field in class_columns:
                 raw_value = str(row.get(field, "")).strip()
@@ -149,23 +187,33 @@ def summarize_cluster_dominants_and_diff_csv(
             if round(first_percent, 2) == 100.0 and positive_second is None:
                 second_class = "0000"
                 second_percent = 0.0
+                second_count = "0"
             elif len(values) > 1:
                 second_class, second_percent = values[1]
+                second_count = _read_count(
+                    row, _class_count_column(second_class), cluster_id
+                )
             else:
                 second_class = "0000"
                 second_percent = 0.0
+                second_count = "0"
+            first_count = _read_count(row, _class_count_column(first_class), cluster_id)
             diff = first_percent - second_percent
             rows.append(
                 [
                     cluster_id,
+                    num_objs,
+                    num_classes,
                     first_class,
                     _format_percent(first_percent),
+                    first_count,
                     second_class,
                     (
                         "0"
                         if second_class == "0000" and second_percent == 0.0
                         else _format_percent(second_percent)
                     ),
+                    second_count,
                     _format_percent(diff),
                 ]
             )
@@ -176,16 +224,35 @@ def summarize_cluster_dominants_and_diff_csv(
         writer.writerow(
             [
                 "cluster_id",
+                "num_objs_in_cluster",
+                "num_classes_in_cluster",
                 "1st_dom_class",
                 "1st_dom_%",
+                "1st_dom_num_objs",
                 "2nd_dom_class",
                 "2nd_dom_%",
+                "2nd_dom_num_objs",
                 "diff_1st-2nd_%",
             ]
         )
         writer.writerows(rows)
 
     return output_path
+
+
+def summarize_cluster_dominants_and_diff_csv(
+    summary_classes_path: Path,
+    output_path: Path | None = None,
+) -> Path:
+    """
+    Backward-compatible alias for summarize_cluster_dominant_classes_and_diff_csv.
+
+    Defaults now write clusters_dominant_classes_and_diff.csv.
+    """
+    return summarize_cluster_dominant_classes_and_diff_csv(
+        summary_classes_path,
+        output_path,
+    )
 
 
 def _extract_class_id(image_id: str) -> str:

@@ -16,7 +16,7 @@ from .model_repo import auto_model_repo
 from .ssl_utils import configure_ssl
 from .summary import (
     summarize_classes_in_clusters_csv,
-    summarize_cluster_dominants_and_diff_csv,
+    summarize_cluster_dominant_classes_and_diff_csv,
     summarize_clusters_csv,
 )
 
@@ -25,7 +25,7 @@ def summarize_cluster_outputs(clusters_csv_path: Path, benchmark_path: Path | No
     """Write all cluster summary CSV files derived from clusters.csv."""
     summarize_clusters_csv(clusters_csv_path)
     summary_classes_path = summarize_classes_in_clusters_csv(clusters_csv_path, benchmark_path)
-    summarize_cluster_dominants_and_diff_csv(summary_classes_path)
+    summarize_cluster_dominant_classes_and_diff_csv(summary_classes_path)
 
 
 def stage_dir(cfg: PipelineConfig, stage: str) -> Path:
