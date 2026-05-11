@@ -187,7 +187,7 @@ python clustering compute-clusters --summarize-clusters /path/to/file/clusters.c
 
 `clusters_summary_classes.csv` is written automatically every time the pipeline
 runs. It contains one row per cluster with counts and percentages for each image
-class found in the dataset.
+class found in the dataset..
 
 The class of each image is extracted from the last 4 characters of its filename
 stem (e.g. `A01-A_r5c4_obj_280286_class_4218.jpg` → class `4218`).
