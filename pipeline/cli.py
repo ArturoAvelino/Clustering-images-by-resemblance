@@ -6,7 +6,11 @@ from typing import List, Optional, Tuple
 
 from .config import build_config, config_to_yaml, validate_config
 from .pipeline import run_pipeline
-from .summary import summarize_classes_in_clusters_csv, summarize_clusters_csv
+from .summary import (
+    summarize_classes_in_clusters_csv,
+    summarize_cluster_dominants_and_diff_csv,
+    summarize_clusters_csv,
+)
 
 
 def _parse_rgb(value: str) -> Tuple[int, int, int]:
@@ -141,6 +145,15 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
             "columns in clusters_summary_classes.csv."
         ),
     )
+    parser.add_argument(
+        "--summarize-dominants-and-diff",
+        type=Path,
+        dest="summarize_dominants_and_diff",
+        help=(
+            "Generate clusters_dominants_and_diff.csv from an existing "
+            "clusters_summary_classes.csv and exit."
+        ),
+    )
     return parser
 
 
@@ -162,10 +175,14 @@ def main(argv: Optional[List[str]] = None, *, prog: Optional[str] = None) -> int
         summarize_clusters_csv(args.summarize_clusters)
         return 0
     if args.summarize_classes_in_clusters is not None:
-        summarize_classes_in_clusters_csv(
+        summary_classes_path = summarize_classes_in_clusters_csv(
             args.summarize_classes_in_clusters,
             benchmark_path=getattr(args, "classes_benchmark_file", None),
         )
+        summarize_cluster_dominants_and_diff_csv(summary_classes_path)
+        return 0
+    if args.summarize_dominants_and_diff is not None:
+        summarize_cluster_dominants_and_diff_csv(args.summarize_dominants_and_diff)
         return 0
     cfg = build_config(args)
     validate_config(cfg)

@@ -192,7 +192,7 @@ cluster. Its columns are `cluster_id`, `num_objs_in_cluster`, and
 
 `clusters_summary_classes.csv` is written automatically every time the pipeline
 runs. It contains one row per cluster with counts and percentages for each image
-class found in the dataset..
+class found in the dataset.
 
 The class of each image is extracted from the last 4 characters of its filename
 stem (e.g. `A01-A_r5c4_obj_280286_class_4218.jpg` → class `4218`).
@@ -204,6 +204,9 @@ pipeline:
 python clustering compute-clusters \
   --summarize-classes-in-clusters /path/to/file/clusters.csv
 ```
+
+This also writes the derived `clusters_dominants_and_diff.csv` next to
+`clusters_summary_classes.csv`.
 
 To also include `class_X_%_of_total_class` columns (what fraction of each
 class's total dataset images fall in each cluster), supply a benchmark CSV with
@@ -229,6 +232,39 @@ label_id,count
 To have the pipeline use a benchmark file on every run, either pass
 `--classes-benchmark-file` alongside `--input-dir` / `--output-dir`, or add
 `classes_benchmark_file: /path/to/classes_benchmark.csv` to your YAML config.
+
+### Generate dominant-class differences per cluster
+
+`clusters_dominants_and_diff.csv` is written automatically every time the
+pipeline writes `clusters_summary_classes.csv`. It contains:
+
+- `cluster_id`
+- `1st_dom_class`
+- `1st_dom_%`
+- `2nd_dom_class`
+- `2nd_dom_%`
+- `diff_1st-2nd_%`
+
+The dominant classes are selected by comparing all
+`class_X_%_of_the_cluster` columns within the same cluster row. If one class is
+100% of a cluster and no other class has a positive percentage, the second
+dominant class is written as `0000`, the second percentage is `0`, and the
+difference is `100.00`.
+
+To regenerate this file from an existing `clusters_summary_classes.csv`:
+
+```bash
+python clustering compute-clusters \
+  --summarize-dominants-and-diff /path/to/file/clusters_summary_classes.csv
+```
+
+You can also use the standalone script:
+
+```bash
+python generate_clusters_dominants_and_diff.py /path/to/file/clusters_summary_classes.csv
+```
+
+Use `--output` with the standalone script to choose a custom output path.
 
 ### Organize clustered outputs into folders
 
@@ -452,6 +488,7 @@ The output directory contains:
   in which case the column is empty)
 - `clusters_summary.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster]`
 - `clusters_summary_classes.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster, class_X, class_X_%_of_the_cluster, ...]` — one row per cluster, one set of columns per class found across the dataset. Class is extracted from the last 4 characters of each image filename stem. Add `class_X_%_of_total_class` columns by supplying `--classes-benchmark-file`.
+- `clusters_dominants_and_diff.csv` with columns `[cluster_id, 1st_dom_class, 1st_dom_%, 2nd_dom_class, 2nd_dom_%, diff_1st-2nd_%]`, derived from the `class_X_%_of_the_cluster` columns in `clusters_summary_classes.csv`
 - `embeddings.dat` and `embeddings.json` (embedding matrix + metadata)
 - `umap.npy` (UMAP-reduced vectors)
 - `images.txt` (stable list of image paths used)

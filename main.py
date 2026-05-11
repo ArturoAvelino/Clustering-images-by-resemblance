@@ -22,6 +22,8 @@ Outputs
   (noise labeled as -1; dim_reduction is a JSON array unless write_dimreduction_vector is false).
 - clusters_summary.csv: columns [cluster_id, num_objs_in_cluster, num_classes_in_cluster].
 - clusters_summary_classes.csv: per-cluster class counts and percentages.
+- clusters_dominants_and_diff.csv: dominant and second-dominant class per cluster,
+  plus their percentage difference.
 - embeddings.dat / embeddings.json: saved embedding matrix + metadata.
 - umap.npy: reduced vectors used for clustering.
 - images.txt: stable list of image paths used for the run.
@@ -84,7 +86,7 @@ from typing import List, Optional
 from pipeline.cli import main as _cli_main, parse_args
 from pipeline.config import PipelineConfig
 from pipeline.pipeline import clustering, run_pipeline
-from pipeline.summary import summarize_clusters_csv
+from pipeline.summary import summarize_cluster_dominants_and_diff_csv, summarize_clusters_csv
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -95,6 +97,7 @@ __all__ = [
     "PipelineConfig",
     "clustering",
     "run_pipeline",
+    "summarize_cluster_dominants_and_diff_csv",
     "summarize_clusters_csv",
     "parse_args",
     "main",

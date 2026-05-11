@@ -23,6 +23,18 @@ def _sort_key(value: str) -> tuple[int, object]:
         return (1, value)
 
 
+def _format_percent(value: float) -> str:
+    return f"{value:.2f}"
+
+
+def _class_from_cluster_percent_column(column_name: str) -> str | None:
+    prefix = "class_"
+    suffix = "_%_of_the_cluster"
+    if column_name.startswith(prefix) and column_name.endswith(suffix):
+        return column_name[len(prefix) : -len(suffix)]
+    return None
+
+
 def summarize_clusters_csv(
     clusters_path: Path,
     output_path: Path | None = None,
@@ -69,6 +81,109 @@ def summarize_clusters_csv(
         writer.writerow(["cluster_id", "num_objs_in_cluster", "num_classes_in_cluster"])
         for cluster in sorted(counts.keys(), key=_sort_key):
             writer.writerow([cluster, counts[cluster], len(classes_by_cluster[cluster])])
+
+    return output_path
+
+
+def summarize_cluster_dominants_and_diff_csv(
+    summary_classes_path: Path,
+    output_path: Path | None = None,
+) -> Path:
+    """
+    Generate clusters_dominants_and_diff.csv from clusters_summary_classes.csv.
+
+    The output keeps one row per cluster and reports the class with the largest
+    ``class_X_%_of_the_cluster`` value, the class with the second-largest value,
+    and the percentage difference between them. If the dominant class accounts
+    for 100% of the cluster and no other class has a positive percentage, the
+    second dominant class is written as ``0000`` with percentage ``0``.
+    """
+    if output_path is None:
+        output_path = summary_classes_path.with_name("clusters_dominants_and_diff.csv")
+
+    if not summary_classes_path.exists():
+        raise FileNotFoundError(
+            f"clusters_summary_classes.csv not found: {summary_classes_path}"
+        )
+
+    with summary_classes_path.open("r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        if reader.fieldnames is None:
+            raise ValueError("clusters_summary_classes.csv has no header row")
+        if "cluster_id" not in reader.fieldnames:
+            raise ValueError("clusters_summary_classes.csv must have a 'cluster_id' column")
+
+        class_columns: list[tuple[str, str]] = []
+        for field in reader.fieldnames:
+            class_id = _class_from_cluster_percent_column(field)
+            if class_id is not None:
+                class_columns.append((class_id, field))
+        if not class_columns:
+            raise ValueError(
+                "clusters_summary_classes.csv must contain class_X_%_of_the_cluster columns"
+            )
+
+        rows: list[list[str]] = []
+        for row in reader:
+            cluster_id = str(row.get("cluster_id", "")).strip()
+            if not cluster_id:
+                continue
+            values: list[tuple[str, float]] = []
+            for class_id, field in class_columns:
+                raw_value = str(row.get(field, "")).strip()
+                try:
+                    percent = float(raw_value) if raw_value else 0.0
+                except ValueError as exc:
+                    raise ValueError(
+                        f"Invalid percentage value for cluster {cluster_id}, column {field}: "
+                        f"{raw_value!r}"
+                    ) from exc
+                values.append((class_id, percent))
+
+            values.sort(key=lambda item: (-item[1], _sort_key(item[0])))
+            first_class, first_percent = values[0]
+            positive_second = next(
+                ((class_id, percent) for class_id, percent in values[1:] if percent > 0.0),
+                None,
+            )
+            if round(first_percent, 2) == 100.0 and positive_second is None:
+                second_class = "0000"
+                second_percent = 0.0
+            elif len(values) > 1:
+                second_class, second_percent = values[1]
+            else:
+                second_class = "0000"
+                second_percent = 0.0
+            diff = first_percent - second_percent
+            rows.append(
+                [
+                    cluster_id,
+                    first_class,
+                    _format_percent(first_percent),
+                    second_class,
+                    (
+                        "0"
+                        if second_class == "0000" and second_percent == 0.0
+                        else _format_percent(second_percent)
+                    ),
+                    _format_percent(diff),
+                ]
+            )
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            [
+                "cluster_id",
+                "1st_dom_class",
+                "1st_dom_%",
+                "2nd_dom_class",
+                "2nd_dom_%",
+                "diff_1st-2nd_%",
+            ]
+        )
+        writer.writerows(rows)
 
     return output_path
 
