@@ -281,15 +281,19 @@ Use `--output` with the standalone script to choose a custom output path.
 `clustering_score_report.csv` contains one row with:
 
 - `sum_diff_1st-2nd_%`
-- `sum_num_classes_in_clusters`
 - `num_dom_classes`
-- `num_objs_in_noise_cluster`
+- `neg_sum_num_classes_in_clusters`
+- `neg_num_objs_in_noise_cluster`
+- `clustering_score`
 
-The first two values sum `diff_1st-2nd_%` and `num_classes_in_cluster` from
+`sum_diff_1st-2nd_%` sums `diff_1st-2nd_%` from
 `clusters_dominant_classes_and_diff.csv`, excluding the row where `cluster_id`
 is `-1`. `num_dom_classes` is the number of distinct values in `1st_dom_class`,
-also excluding cluster `-1`. `num_objs_in_noise_cluster` is copied from
-`num_objs_in_cluster` in the cluster `-1` row.
+also excluding cluster `-1`. `neg_sum_num_classes_in_clusters` is the negative
+sum of `num_classes_in_cluster`, excluding cluster `-1`.
+`neg_num_objs_in_noise_cluster` is the negative value of `num_objs_in_cluster`
+from the cluster `-1` row. `clustering_score` is the arithmetic sum of those
+four values.
 
 To regenerate only the score report from an existing
 `clusters_dominant_classes_and_diff.csv`:
@@ -522,7 +526,7 @@ The output directory contains:
 - `clusters_summary.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster]`
 - `clusters_summary_classes.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster, class_X, class_X_%_of_the_cluster, ...]` — one row per cluster, one set of columns per class found across the dataset. Class is extracted from the last 4 characters of each image filename stem. Add `class_X_%_of_total_class` columns by supplying `--classes-benchmark-file`.
 - `clusters_dominant_classes_and_diff.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster, 1st_dom_class, 1st_dom_%, 1st_dom_num_objs, 2nd_dom_class, 2nd_dom_%, 2nd_dom_num_objs, diff_1st-2nd_%]`, derived from the `num_objs_in_cluster`, `num_classes_in_cluster`, `class_X`, and `class_X_%_of_the_cluster` columns in `clusters_summary_classes.csv`
-- `clustering_score_report.csv` with columns `[sum_diff_1st-2nd_%, sum_num_classes_in_clusters, num_dom_classes, num_objs_in_noise_cluster]`, derived from `clusters_dominant_classes_and_diff.csv`; the aggregate score columns exclude cluster `-1`, while `num_objs_in_noise_cluster` is copied from the cluster `-1` row
+- `clustering_score_report.csv` with columns `[sum_diff_1st-2nd_%, num_dom_classes, neg_sum_num_classes_in_clusters, neg_num_objs_in_noise_cluster, clustering_score]`, derived from `clusters_dominant_classes_and_diff.csv`; the aggregate score columns exclude cluster `-1`, while `neg_num_objs_in_noise_cluster` is the negative object count from the cluster `-1` row
 - `embeddings.dat` and `embeddings.json` (embedding matrix + metadata)
 - `umap.npy` (UMAP-reduced vectors)
 - `images.txt` (stable list of image paths used)

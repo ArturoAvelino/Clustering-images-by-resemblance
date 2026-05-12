@@ -275,10 +275,11 @@ def summarize_clustering_score_report_csv(
     Generate clustering_score_report.csv from clusters_dominant_classes_and_diff.csv.
 
     The report contains one row with aggregate scores computed from every
-    cluster except cluster ``-1``: the sum of ``diff_1st-2nd_%``, the sum of
-    ``num_classes_in_cluster``, and the number of distinct classes appearing in
-    ``1st_dom_class``. It also reports ``num_objs_in_noise_cluster`` from the
-    ``num_objs_in_cluster`` value in the cluster ``-1`` row.
+    cluster except cluster ``-1``: the sum of ``diff_1st-2nd_%`` and the number
+    of distinct classes appearing in ``1st_dom_class``. It also reports negative
+    penalty values for the summed ``num_classes_in_cluster`` values and for the
+    ``num_objs_in_cluster`` value in the cluster ``-1`` row. ``clustering_score``
+    is the arithmetic sum of the four preceding report values.
     """
     if output_path is None:
         output_path = dominant_classes_path.with_name("clustering_score_report.csv")
@@ -325,23 +326,35 @@ def summarize_clustering_score_report_csv(
             if dominant_class:
                 dominant_classes.add(dominant_class)
 
+    num_dom_classes = len(dominant_classes)
+    neg_sum_num_classes = -sum_num_classes
+    neg_num_objs_in_noise_cluster = -num_objs_in_noise_cluster
+    clustering_score = (
+        sum_diff
+        + num_dom_classes
+        + neg_sum_num_classes
+        + neg_num_objs_in_noise_cluster
+    )
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(
             [
                 "sum_diff_1st-2nd_%",
-                "sum_num_classes_in_clusters",
                 "num_dom_classes",
-                "num_objs_in_noise_cluster",
+                "neg_sum_num_classes_in_clusters",
+                "neg_num_objs_in_noise_cluster",
+                "clustering_score",
             ]
         )
         writer.writerow(
             [
                 _format_percent(sum_diff),
-                sum_num_classes,
-                len(dominant_classes),
-                num_objs_in_noise_cluster,
+                num_dom_classes,
+                neg_sum_num_classes,
+                neg_num_objs_in_noise_cluster,
+                _format_percent(clustering_score),
             ]
         )
 
