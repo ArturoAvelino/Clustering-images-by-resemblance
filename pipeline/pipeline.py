@@ -172,6 +172,12 @@ def run_stage(
 def select_uncertain(
     result: "ClusterResult", threshold: float, include_noise: bool = True
 ) -> np.ndarray:
+    """Return pass-1 sample indices that should be reclustered in pass 2.
+
+    Samples are selected when their HDBSCAN membership probability is below
+    ``threshold``. If ``include_noise`` is true, samples labeled as noise
+    (cluster ``-1``) are also selected regardless of probability.
+    """
     labels = result.labels
     mask = np.zeros(labels.shape, dtype=bool)
     if include_noise:

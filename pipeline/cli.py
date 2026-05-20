@@ -104,7 +104,14 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
     parser.add_argument("--fast-umap-neighbors", type=int)
     parser.add_argument("--fast-batch-size", type=int)
     parser.add_argument("--fast-num-workers", type=int)
-    parser.add_argument("--refine-prob-threshold", type=float)
+    parser.add_argument(
+        "--refine-prob-threshold",
+        type=float,
+        help=(
+            "Two-pass mode only: refine pass-1 samples whose HDBSCAN membership "
+            "probability is below this 0-1 cutoff. Default: 0.7."
+        ),
+    )
     refine = parser.add_mutually_exclusive_group()
     refine.add_argument(
         "--refine-include-noise", dest="refine_include_noise", action="store_true", default=None

@@ -5,6 +5,11 @@ from collections import Counter
 from pathlib import Path
 from typing import Optional
 
+from .class_labels import (
+    DEFAULT_CLASS_ID_NUM_CHARACTERS,
+    extract_class_id_from_filename,
+)
+
 
 def _normalize_cluster(raw: str) -> str:
     raw = raw.strip()
@@ -377,8 +382,11 @@ def summarize_cluster_dominants_and_diff_csv(
 
 
 def _extract_class_id(image_id: str) -> str:
-    """Extract class ID from the last 4 characters of the image filename stem."""
-    return Path(image_id).stem[-4:]
+    """Extract the default 4-character class ID from an image filename."""
+    return extract_class_id_from_filename(
+        Path(image_id).name,
+        DEFAULT_CLASS_ID_NUM_CHARACTERS,
+    )
 
 
 def summarize_classes_in_clusters_csv(

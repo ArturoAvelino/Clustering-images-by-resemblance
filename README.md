@@ -111,6 +111,12 @@ CLI commands:
 | `copy-crops-to-subdir-outliers` | Copy low-probability, high-outlier-score crop images into threshold-labeled per-cluster outlier subdirectories. |
 | `calibrate-threshold` | Estimate a background color distance threshold for auto-cropping. |
 
+Standalone helper script:
+
+| Script | Purpose |
+| --- | --- |
+| `count-classes-on-labeled-filenames` | Scan a directory tree of labeled image filenames and write `classes_in_dataset.csv` with one row per extracted class ID. |
+
 Basic run:
 
 ```bash
@@ -134,6 +140,22 @@ Print the values of all the config variables used, including default interval va
 ```bash
 python clustering compute-clusters --config /path/to/config.yaml --print-config
 ```
+
+Generate `classes_in_dataset.csv` from the last characters of each image
+filename stem:
+
+```bash
+python count-classes-on-labeled-filenames \
+  --files-dir /path/to/folder/ \
+  --num-characters-to-read-class 4 \
+  --output-dir /path/to/output/directory/
+```
+
+This helper walks `--files-dir` recursively, reads the last
+`--num-characters-to-read-class` characters before the extension of every image
+filename, and writes `classes_in_dataset.csv` with the headers `class_ID` and
+`num_objs`. Supported image extensions are `.jpg`, `.jpeg`, `.png`, `.bmp`,
+`.tif`, `.tiff`, and `.webp`.
 
 ### Rerun dimensionality-reduction (UMAP) + clustering (HDBSCAN) without embeddings (DINOv2)
 
@@ -196,6 +218,16 @@ class found in the dataset.
 
 The class of each image is extracted from the last 4 characters of its filename
 stem (e.g. `A01-A_r5c4_obj_280286_class_4218.jpg` → class `4218`).
+
+If you need the dataset-wide counts for those filename labels, generate
+`classes_in_dataset.csv` directly from the image directory:
+
+```bash
+python count-classes-on-labeled-filenames \
+  --files-dir /path/to/folder/ \
+  --num-characters-to-read-class 4 \
+  --output-dir /path/to/output/directory/
+```
 
 To regenerate the file from an existing `clusters.csv` without re-running the
 pipeline:
@@ -421,6 +453,7 @@ most important fields are:
 - `hdbscan_min_cluster_size`
 - `write_dimreduction_vector` (default `true`, writes the UMAP vector to `clusters.csv`)
 - `two_pass` or `fast_tune` (recommended: `false`)
+- `refine_prob_threshold` (default `0.7`; used only when `two_pass: true`)
 - `autocrop` (default: `false`)
 - `background_color` (RGB background color as `[R, G, B]`; default is tuned for blue)
 - `autocrop_threshold` (color-distance threshold used to separate background from foreground)
@@ -524,6 +557,7 @@ The output directory contains:
   UMAP values, length = `umap_dim` unless `write_dimreduction_vector: false`,
   in which case the column is empty)
 - `clusters_summary.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster]`
+- `classes_in_dataset.csv` with columns `[class_ID, num_objs]`, written by `python count-classes-on-labeled-filenames ...` after recursively scanning the labeled image directory
 - `clusters_summary_classes.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster, class_X, class_X_%_of_the_cluster, ...]` — one row per cluster, one set of columns per class found across the dataset. Class is extracted from the last 4 characters of each image filename stem. Add `class_X_%_of_total_class` columns by supplying `--classes-benchmark-file`.
 - `clusters_dominant_classes_and_diff.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster, 1st_dom_class, 1st_dom_%, 1st_dom_num_objs, 2nd_dom_class, 2nd_dom_%, 2nd_dom_num_objs, diff_1st-2nd_%]`, derived from the `num_objs_in_cluster`, `num_classes_in_cluster`, `class_X`, and `class_X_%_of_the_cluster` columns in `clusters_summary_classes.csv`
 - `clustering_score_report.csv` with columns `[sum_diff_1st-2nd_%, num_dom_classes, neg_sum_num_classes_in_clusters, neg_num_objs_in_noise_cluster, clustering_score]`, derived from `clusters_dominant_classes_and_diff.csv`; the aggregate score columns exclude cluster `-1`, while `neg_num_objs_in_noise_cluster` is the negative object count from the cluster `-1` row
@@ -547,6 +581,24 @@ When `two_pass: true` is enabled in the configuration input file, the pipeline r
 2. **Pass 2 (refinement stage)**: Re-runs UMAP + HDBSCAN only on the uncertain
    subset, using the *full* settings. The UMAP vectors given to HDBSCAN in pass 2
    have `umap_dim` elements (for example 30).
+
+`refine_prob_threshold` controls which pass-1 samples are treated as uncertain.
+HDBSCAN reports a membership probability in the range 0-1 for each sample; lower
+values mean weaker confidence that the sample belongs to its assigned cluster.
+During two-pass mode, any sample with probability below `refine_prob_threshold`
+is sent to pass 2 for refinement. If `refine_include_noise: true`, samples
+assigned to noise (`cluster == -1`) are also refined regardless of probability.
+The value is ignored when `two_pass: false`, `fast_tune: true`, or when using the
+`only-dimreduction-and-clustering` / `only-clustering` compute modes.
+
+Use the default `refine_prob_threshold: 0.7` as a balanced starting point. Lower
+values such as `0.4-0.6` refine fewer samples and run faster, but can leave
+borderline assignments from pass 1 unchanged. Higher values such as `0.8-0.9`
+refine more samples and can improve conservative clustering, but pass 2 takes
+longer and may include many already-reasonable assignments. Avoid values near
+`0.0` unless you only want to refine noise points, and avoid values near `1.0`
+unless you intentionally want almost every non-perfect pass-1 assignment to be
+rerun.
 
 Recommendation: prefer `two_pass: false` so all objects are clustered using
 `umap_dim` consistently.

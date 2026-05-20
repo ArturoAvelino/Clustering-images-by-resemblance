@@ -1,0 +1,15 @@
+from __future__ import annotations
+
+"""CLI script for writing classes_in_dataset.csv from labeled image filenames."""
+
+import sys
+from multiprocessing import freeze_support
+
+from pipeline.class_labels import main
+
+
+if __name__ == "__main__":
+    freeze_support()
+    raise SystemExit(
+        main(sys.argv[1:], prog="python count-classes-on-labeled-filenames")
+    )

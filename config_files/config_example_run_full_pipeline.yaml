@@ -46,6 +46,13 @@ write_dimreduction_vector: true
 # If false, a single pass is run.
 two_pass: false
 
+# Probability cutoff used only when two_pass is true.
+# Pass-1 samples with HDBSCAN membership probability below this value are
+# considered uncertain and rerun in pass 2 with the full settings.
+# Use a lower value such as 0.5 to refine fewer samples, or a higher value such
+# as 0.8 to refine more borderline samples. The default is 0.7.
+refine_prob_threshold: 0.7
+
 # Enable automatic cropping of background-colored margins.
 # Set to false if backgrounds are not consistent or if crops are already tight.
 autocrop: false
