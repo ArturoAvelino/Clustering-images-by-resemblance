@@ -139,7 +139,7 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
         dest="summarize_classes_in_clusters",
         help=(
             "Generate clusters_summary_classes.csv from an existing clusters.csv and exit. "
-            "Extracts the class ID from the last 4 characters of each image filename stem. "
+            "Only basenames ending with _class_1234.jpg contribute to class-derived columns. "
             "Use together with --classes-benchmark-file to include %%_of_total_class columns."
         ),
     )
@@ -159,7 +159,7 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
         dest="summarize_dominants_and_diff",
         help=(
             "Generate clusters_dominant_classes_and_diff.csv from an existing "
-            "clusters_summary_classes.csv and exit."
+            "clusters_summary_classes.csv, including diff_1st-2nd_norm, and exit."
         ),
     )
     parser.add_argument(
@@ -168,7 +168,8 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
         dest="summary_scores",
         help=(
             "Generate clustering_score_report.csv from an existing "
-            "clusters_dominant_classes_and_diff.csv and exit."
+            "clusters_dominant_classes_and_diff.csv and the sibling "
+            "clusters_summary_classes.csv, then exit."
         ),
     )
     return parser

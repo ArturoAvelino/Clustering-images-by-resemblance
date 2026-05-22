@@ -21,12 +21,15 @@ Outputs
 - clusters.csv: columns [image_id, cluster, probabilities, outlier_scores, dim_reduction]
   (noise labeled as -1; dim_reduction is a JSON array unless write_dimreduction_vector is false).
 - clusters_summary.csv: columns [cluster_id, num_objs_in_cluster, num_classes_in_cluster].
-- clusters_summary_classes.csv: per-cluster class counts and percentages.
+- clusters_summary_classes.csv: per-cluster class counts and percentages for
+  basenames that end with `_class_1234.jpg`; non-matching filenames still count
+  toward num_objs_in_cluster but are ignored for class-derived columns.
 - clusters_dominant_classes_and_diff.csv: dominant and second-dominant class
-  counts and percentages per cluster, plus their percentage difference.
-- clustering_score_report.csv: aggregate dominance scores computed from
-  clusters_dominant_classes_and_diff.csv, excluding cluster -1 for score sums
-  and reporting the number of objects in cluster -1.
+  counts and percentages per cluster, plus `diff_1st-2nd_%` and
+  `diff_1st-2nd_norm`.
+- clustering_score_report.csv: normalized aggregate metrics derived from
+  clusters_dominant_classes_and_diff.csv and clusters_summary_classes.csv,
+  including the noise-cluster proportion and their arithmetic mean.
 - embeddings.dat / embeddings.json: saved embedding matrix + metadata.
 - umap.npy: reduced vectors used for clustering.
 - images.txt: stable list of image paths used for the run.

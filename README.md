@@ -141,7 +141,7 @@ Print the values of all the config variables used, including default interval va
 python clustering compute-clusters --config /path/to/config.yaml --print-config
 ```
 
-Generate `classes_in_dataset.csv` from the last characters of each image
+Generate `classes_in_dataset.csv` from the trailing characters of each image
 filename stem:
 
 ```bash
@@ -216,8 +216,12 @@ cluster. Its columns are `cluster_id`, `num_objs_in_cluster`, and
 runs. It contains one row per cluster with counts and percentages for each image
 class found in the dataset.
 
-The class of each image is extracted from the last 4 characters of its filename
-stem (e.g. `A01-A_r5c4_obj_280286_class_4218.jpg` → class `4218`).
+For cluster summary outputs, a file contributes to class-derived columns only
+when its basename ends with `_class_1234.jpg` (for example,
+`A01-A_r5c4_obj_280286_class_4218.jpg` contributes class `4218`). Files that do
+not match that exact pattern are still counted in `num_objs_in_cluster`, but
+they are ignored for `num_classes_in_cluster`, per-class counts, dominant-class
+selection, and the score report.
 
 If you need the dataset-wide counts for those filename labels, generate
 `classes_in_dataset.csv` directly from the image directory:
@@ -282,6 +286,7 @@ file contains:
 - `2nd_dom_%`
 - `2nd_dom_num_objs`
 - `diff_1st-2nd_%`
+- `diff_1st-2nd_norm`
 
 The dominant classes are selected by comparing all
 `class_X_%_of_the_cluster` columns within the same cluster row. The
@@ -291,7 +296,7 @@ values come from the matching `class_X` count columns in
 `clusters_summary_classes.csv`. If one class is 100% of a cluster and no other
 class has a positive percentage, the second dominant class is written as `0000`,
 the second percentage is `0`, the second object count is `0`, and the
-difference is `100.00`.
+difference is `100.00`. `diff_1st-2nd_norm` is `diff_1st-2nd_% / 100`.
 
 To regenerate this file from an existing `clusters_summary_classes.csv`:
 
@@ -312,20 +317,22 @@ Use `--output` with the standalone script to choose a custom output path.
 
 `clustering_score_report.csv` contains one row with:
 
-- `sum_diff_1st-2nd_%`
-- `num_dom_classes`
-- `neg_sum_num_classes_in_clusters`
-- `neg_num_objs_in_noise_cluster`
-- `clustering_score`
+- `average_diff_1st-2nd_norm`
+- `norm_num_dom_classes`
+- `inv_average_num_classes_in_clusters`
+- `proportion_objs_in_noise_cluster`
+- `average_score`
 
-`sum_diff_1st-2nd_%` sums `diff_1st-2nd_%` from
-`clusters_dominant_classes_and_diff.csv`, excluding the row where `cluster_id`
-is `-1`. `num_dom_classes` is the number of distinct values in `1st_dom_class`,
-also excluding cluster `-1`. `neg_sum_num_classes_in_clusters` is the negative
-sum of `num_classes_in_cluster`, excluding cluster `-1`.
-`neg_num_objs_in_noise_cluster` is the negative value of `num_objs_in_cluster`
-from the cluster `-1` row. `clustering_score` is the arithmetic sum of those
-four values.
+`average_diff_1st-2nd_norm` is the average of `diff_1st-2nd_norm` from
+`clusters_dominant_classes_and_diff.csv`. `norm_num_dom_classes` is the number
+of distinct non-`0000` values in `1st_dom_class`, divided by the total number of
+different classes present in `clusters_summary_classes.csv`.
+`inv_average_num_classes_in_clusters` is `1 / average_num_classes_in_clusters`,
+where `average_num_classes_in_clusters` is the average of
+`num_classes_in_cluster` across `clusters_dominant_classes_and_diff.csv`.
+`proportion_objs_in_noise_cluster` is computed as
+`(total input images - objects in cluster -1) / total input images`.
+`average_score` is the arithmetic mean of those four normalized values.
 
 To regenerate only the score report from an existing
 `clusters_dominant_classes_and_diff.csv`:
@@ -558,9 +565,9 @@ The output directory contains:
   in which case the column is empty)
 - `clusters_summary.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster]`
 - `classes_in_dataset.csv` with columns `[class_ID, num_objs]`, written by `python count-classes-on-labeled-filenames ...` after recursively scanning the labeled image directory
-- `clusters_summary_classes.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster, class_X, class_X_%_of_the_cluster, ...]` — one row per cluster, one set of columns per class found across the dataset. Class is extracted from the last 4 characters of each image filename stem. Add `class_X_%_of_total_class` columns by supplying `--classes-benchmark-file`.
-- `clusters_dominant_classes_and_diff.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster, 1st_dom_class, 1st_dom_%, 1st_dom_num_objs, 2nd_dom_class, 2nd_dom_%, 2nd_dom_num_objs, diff_1st-2nd_%]`, derived from the `num_objs_in_cluster`, `num_classes_in_cluster`, `class_X`, and `class_X_%_of_the_cluster` columns in `clusters_summary_classes.csv`
-- `clustering_score_report.csv` with columns `[sum_diff_1st-2nd_%, num_dom_classes, neg_sum_num_classes_in_clusters, neg_num_objs_in_noise_cluster, clustering_score]`, derived from `clusters_dominant_classes_and_diff.csv`; the aggregate score columns exclude cluster `-1`, while `neg_num_objs_in_noise_cluster` is the negative object count from the cluster `-1` row
+- `clusters_summary_classes.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster, class_X, class_X_%_of_the_cluster, ...]` — one row per cluster, one set of columns per valid class found across the dataset. A class is recognized only when the basename ends with `_class_1234.jpg`; non-matching filenames still contribute to `num_objs_in_cluster` but are excluded from class-derived columns. Add `class_X_%_of_total_class` columns by supplying `--classes-benchmark-file`.
+- `clusters_dominant_classes_and_diff.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster, 1st_dom_class, 1st_dom_%, 1st_dom_num_objs, 2nd_dom_class, 2nd_dom_%, 2nd_dom_num_objs, diff_1st-2nd_%, diff_1st-2nd_norm]`, derived from the `num_objs_in_cluster`, `num_classes_in_cluster`, `class_X`, and `class_X_%_of_the_cluster` columns in `clusters_summary_classes.csv`
+- `clustering_score_report.csv` with columns `[average_diff_1st-2nd_norm, norm_num_dom_classes, inv_average_num_classes_in_clusters, proportion_objs_in_noise_cluster, average_score]`, derived from `clusters_dominant_classes_and_diff.csv` together with the sibling `clusters_summary_classes.csv`
 - `embeddings.dat` and `embeddings.json` (embedding matrix + metadata)
 - `umap.npy` (UMAP-reduced vectors)
 - `images.txt` (stable list of image paths used)

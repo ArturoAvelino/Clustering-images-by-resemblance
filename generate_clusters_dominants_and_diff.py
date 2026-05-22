@@ -22,8 +22,9 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Read clusters_summary_classes.csv and write "
             "clusters_dominant_classes_and_diff.csv with the dominant class, "
-            "second-dominant class, object counts, and percentage difference "
-            "for each cluster. Also writes clustering_score_report.csv."
+            "second-dominant class, object counts, percentage difference, and "
+            "normalized difference for each cluster. Also writes the "
+            "normalized clustering_score_report.csv."
         )
     )
     parser.add_argument(

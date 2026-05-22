@@ -5,11 +5,13 @@ from __future__ import annotations
 import argparse
 import csv
 import os
+import re
 from collections import Counter
 from pathlib import Path
 from typing import Iterable, Mapping, Optional
 
 DEFAULT_CLASS_ID_NUM_CHARACTERS = 4
+STRICT_JPG_CLASS_ID_PATTERN = re.compile(r"_class_(\d{4})\.jpg$")
 SUPPORTED_IMAGE_EXTENSIONS = frozenset(
     {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 )
@@ -38,6 +40,20 @@ def extract_class_id_from_filename(
     if not dot:
         stem = filename
     return stem[-num_characters_to_read_class:]
+
+
+def extract_strict_jpg_class_id(filename: str) -> str | None:
+    """
+    Return the class ID only when ``filename`` ends with ``_class_1234.jpg``.
+
+    The match is evaluated against the basename only. Filenames that do not
+    contain ``_class_`` immediately before a 4-digit class ID and the ``.jpg``
+    extension are treated as unlabeled and return ``None``.
+    """
+    match = STRICT_JPG_CLASS_ID_PATTERN.search(Path(filename).name)
+    if match is None:
+        return None
+    return match.group(1)
 
 
 def _is_supported_image_filename(filename: str) -> bool:

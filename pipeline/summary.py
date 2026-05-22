@@ -5,10 +5,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Optional
 
-from .class_labels import (
-    DEFAULT_CLASS_ID_NUM_CHARACTERS,
-    extract_class_id_from_filename,
-)
+from .class_labels import extract_strict_jpg_class_id
 
 
 def _normalize_cluster(raw: str) -> str:
@@ -30,6 +27,10 @@ def _sort_key(value: str) -> tuple[int, object]:
 
 def _format_percent(value: float) -> str:
     return f"{value:.2f}"
+
+
+def _format_ratio(value: float) -> str:
+    return f"{value:.4f}"
 
 
 def _class_from_cluster_percent_column(column_name: str) -> str | None:
@@ -92,9 +93,10 @@ def summarize_clusters_csv(
 
     The output contains one row per cluster with the normalized cluster ID, the
     number of objects assigned to the cluster, and the number of distinct image
-    classes in the cluster. Class IDs are extracted with the same rule used by
-    clusters_summary_classes.csv: the last 4 characters of each image filename
-    stem.
+    classes in the cluster. Only filenames whose basename ends with
+    ``_class_1234.jpg`` contribute to ``num_classes_in_cluster``. Filenames that
+    do not follow that rule are still counted in ``num_objs_in_cluster`` but are
+    ignored for class-derived values.
     """
     if output_path is None:
         output_path = clusters_path.with_name("clusters_summary.csv")
@@ -121,7 +123,10 @@ def summarize_clusters_csv(
             if not cluster:
                 continue
             counts[cluster] += 1
-            classes_by_cluster.setdefault(cluster, set()).add(_extract_class_id(image_id))
+            classes_by_cluster.setdefault(cluster, set())
+            class_id = _extract_class_id(image_id)
+            if class_id is not None:
+                classes_by_cluster[cluster].add(class_id)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8", newline="") as f:
@@ -143,11 +148,11 @@ def summarize_cluster_dominant_classes_and_diff_csv(
     The output keeps one row per cluster and reports the class with the largest
     ``class_X_%_of_the_cluster`` value, the matching ``class_X`` object count,
     the class with the second-largest percentage and its count, and the
-    percentage difference between them. It also copies ``num_objs_in_cluster``
-    and ``num_classes_in_cluster`` from the source file. If the dominant class
-    accounts for 100% of the cluster and no other class has a positive
-    percentage, the second dominant class is written as ``0000`` with percentage
-    ``0`` and object count ``0``.
+    percentage difference between them, plus the normalized difference
+    ``diff_1st-2nd_norm = diff_1st-2nd_% / 100``. It also copies
+    ``num_objs_in_cluster`` and ``num_classes_in_cluster`` from the source file.
+    If a cluster has fewer than two labeled classes, missing dominant slots are
+    written as ``0000`` with percentage ``0`` and object count ``0``.
     """
     if output_path is None:
         output_path = summary_classes_path.with_name(
@@ -185,11 +190,6 @@ def summarize_cluster_dominant_classes_and_diff_csv(
                         "clusters_summary_classes.csv must contain matching "
                         f"{count_field} count column for {field}"
                     )
-        if not class_columns:
-            raise ValueError(
-                "clusters_summary_classes.csv must contain class_X_%_of_the_cluster columns"
-            )
-
         rows: list[list[str]] = []
         for row in reader:
             cluster_id = str(row.get("cluster_id", "")).strip()
@@ -209,26 +209,29 @@ def summarize_cluster_dominant_classes_and_diff_csv(
                     ) from exc
                 values.append((class_id, percent))
 
-            values.sort(key=lambda item: (-item[1], _sort_key(item[0])))
-            first_class, first_percent = values[0]
-            positive_second = next(
-                ((class_id, percent) for class_id, percent in values[1:] if percent > 0.0),
-                None,
+            positive_values = sorted(
+                (
+                    (class_id, percent)
+                    for class_id, percent in values
+                    if percent > 0.0
+                ),
+                key=lambda item: (-item[1], _sort_key(item[0])),
             )
-            if round(first_percent, 2) == 100.0 and positive_second is None:
-                second_class = "0000"
-                second_percent = 0.0
-                second_count = "0"
-            elif len(values) > 1:
-                second_class, second_percent = values[1]
-                second_count = _read_count(
-                    row, _class_count_column(second_class), cluster_id
-                )
+            if positive_values:
+                first_class, first_percent = positive_values[0]
+                first_count = _read_count(row, _class_count_column(first_class), cluster_id)
+            else:
+                first_class = "0000"
+                first_percent = 0.0
+                first_count = "0"
+
+            if len(positive_values) > 1:
+                second_class, second_percent = positive_values[1]
+                second_count = _read_count(row, _class_count_column(second_class), cluster_id)
             else:
                 second_class = "0000"
                 second_percent = 0.0
                 second_count = "0"
-            first_count = _read_count(row, _class_count_column(first_class), cluster_id)
             diff = first_percent - second_percent
             rows.append(
                 [
@@ -246,6 +249,7 @@ def summarize_cluster_dominant_classes_and_diff_csv(
                     ),
                     second_count,
                     _format_percent(diff),
+                    _format_ratio(diff / 100.0),
                 ]
             )
 
@@ -264,35 +268,47 @@ def summarize_cluster_dominant_classes_and_diff_csv(
                 "2nd_dom_%",
                 "2nd_dom_num_objs",
                 "diff_1st-2nd_%",
+                "diff_1st-2nd_norm",
             ]
         )
         writer.writerows(rows)
 
-    summarize_clustering_score_report_csv(output_path)
+    summarize_clustering_score_report_csv(
+        output_path,
+        summary_classes_path=summary_classes_path,
+    )
     return output_path
 
 
 def summarize_clustering_score_report_csv(
     dominant_classes_path: Path,
     output_path: Path | None = None,
+    summary_classes_path: Path | None = None,
 ) -> Path:
     """
     Generate clustering_score_report.csv from clusters_dominant_classes_and_diff.csv.
 
-    The report contains one row with aggregate scores computed from every
-    cluster except cluster ``-1``: the sum of ``diff_1st-2nd_%`` and the number
-    of distinct classes appearing in ``1st_dom_class``. It also reports negative
-    penalty values for the summed ``num_classes_in_cluster`` values and for the
-    ``num_objs_in_cluster`` value in the cluster ``-1`` row. ``clustering_score``
-    is the arithmetic sum of the four preceding report values.
+    The report contains one row with four normalized metrics:
+    ``average_diff_1st-2nd_norm``, ``norm_num_dom_classes``,
+    ``inv_average_num_classes_in_clusters``, and
+    ``proportion_objs_in_noise_cluster``. ``average_score`` is the arithmetic
+    mean of those four values.
     """
     if output_path is None:
         output_path = dominant_classes_path.with_name("clustering_score_report.csv")
+    if summary_classes_path is None:
+        summary_classes_path = dominant_classes_path.with_name("clusters_summary_classes.csv")
 
     if not dominant_classes_path.exists():
         raise FileNotFoundError(
             f"clusters_dominant_classes_and_diff.csv not found: {dominant_classes_path}"
         )
+    if not summary_classes_path.exists():
+        raise FileNotFoundError(
+            f"clusters_summary_classes.csv not found: {summary_classes_path}"
+        )
+
+    total_num_classes = _count_total_num_classes(summary_classes_path)
 
     with dominant_classes_path.open("r", encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
@@ -303,7 +319,7 @@ def summarize_clustering_score_report_csv(
             "num_objs_in_cluster",
             "num_classes_in_cluster",
             "1st_dom_class",
-            "diff_1st-2nd_%",
+            "diff_1st-2nd_norm",
         ]
         for column in required_columns:
             if column not in reader.fieldnames:
@@ -312,54 +328,69 @@ def summarize_clustering_score_report_csv(
                     f"{column!r} column"
                 )
 
-        sum_diff = 0.0
+        sum_diff_norm = 0.0
         sum_num_classes = 0
+        total_num_objs = 0
+        row_count = 0
         num_objs_in_noise_cluster = 0
         dominant_classes: set[str] = set()
         for row in reader:
             cluster_id = str(row.get("cluster_id", "")).strip()
             if not cluster_id:
                 continue
+            num_objs = _read_int(row, "num_objs_in_cluster", cluster_id)
+            total_num_objs += num_objs
+            row_count += 1
             if cluster_id == "-1":
-                num_objs_in_noise_cluster = _read_int(
-                    row, "num_objs_in_cluster", cluster_id
-                )
-                continue
-            sum_diff += _read_float(row, "diff_1st-2nd_%", cluster_id)
+                num_objs_in_noise_cluster = num_objs
+            sum_diff_norm += _read_float(row, "diff_1st-2nd_norm", cluster_id)
             sum_num_classes += _read_int(row, "num_classes_in_cluster", cluster_id)
             dominant_class = str(row.get("1st_dom_class", "")).strip()
-            if dominant_class:
+            if dominant_class and dominant_class != "0000":
                 dominant_classes.add(dominant_class)
 
     num_dom_classes = len(dominant_classes)
-    neg_sum_num_classes = -sum_num_classes
-    neg_num_objs_in_noise_cluster = -num_objs_in_noise_cluster
-    clustering_score = (
-        sum_diff
-        + num_dom_classes
-        + neg_sum_num_classes
-        + neg_num_objs_in_noise_cluster
+    average_diff_norm = sum_diff_norm / row_count if row_count > 0 else 0.0
+    average_num_classes_in_clusters = sum_num_classes / row_count if row_count > 0 else 0.0
+    norm_num_dom_classes = (
+        num_dom_classes / total_num_classes if total_num_classes > 0 else 0.0
     )
+    inv_average_num_classes_in_clusters = (
+        1.0 / average_num_classes_in_clusters
+        if average_num_classes_in_clusters > 0.0
+        else 0.0
+    )
+    proportion_objs_in_noise_cluster = (
+        (total_num_objs - num_objs_in_noise_cluster) / total_num_objs
+        if total_num_objs > 0
+        else 0.0
+    )
+    average_score = (
+        average_diff_norm
+        + norm_num_dom_classes
+        + inv_average_num_classes_in_clusters
+        + proportion_objs_in_noise_cluster
+    ) / 4.0
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(
             [
-                "sum_diff_1st-2nd_%",
-                "num_dom_classes",
-                "neg_sum_num_classes_in_clusters",
-                "neg_num_objs_in_noise_cluster",
-                "clustering_score",
+                "average_diff_1st-2nd_norm",
+                "norm_num_dom_classes",
+                "inv_average_num_classes_in_clusters",
+                "proportion_objs_in_noise_cluster",
+                "average_score",
             ]
         )
         writer.writerow(
             [
-                _format_percent(sum_diff),
-                num_dom_classes,
-                neg_sum_num_classes,
-                neg_num_objs_in_noise_cluster,
-                _format_percent(clustering_score),
+                _format_ratio(average_diff_norm),
+                _format_ratio(norm_num_dom_classes),
+                _format_ratio(inv_average_num_classes_in_clusters),
+                _format_ratio(proportion_objs_in_noise_cluster),
+                _format_ratio(average_score),
             ]
         )
 
@@ -381,12 +412,15 @@ def summarize_cluster_dominants_and_diff_csv(
     )
 
 
-def _extract_class_id(image_id: str) -> str:
-    """Extract the default 4-character class ID from an image filename."""
-    return extract_class_id_from_filename(
-        Path(image_id).name,
-        DEFAULT_CLASS_ID_NUM_CHARACTERS,
-    )
+def _extract_class_id(image_id: str) -> str | None:
+    """
+    Extract a strict 4-digit class ID from an image filename.
+
+    Only basenames that end with ``_class_1234.jpg`` are considered labeled.
+    Non-matching filenames return ``None`` and are ignored by class-derived
+    summaries.
+    """
+    return extract_strict_jpg_class_id(Path(image_id).name)
 
 
 def summarize_classes_in_clusters_csv(
@@ -397,9 +431,11 @@ def summarize_classes_in_clusters_csv(
     """
     Generate clusters_summary_classes.csv from clusters.csv.
 
-    For each cluster, counts images per class (extracted from the last 4
-    characters of each image filename stem, e.g. 'class_4218.jpg' → '4218').
-    Produces one row per cluster with per-class counts and percentages.
+    For each cluster, counts images per class only when the basename ends with
+    ``_class_1234.jpg``. Filenames that do not follow that pattern remain part
+    of ``num_objs_in_cluster`` but do not contribute to per-class counts,
+    percentages, or ``num_classes_in_cluster``. Produces one row per cluster
+    with per-class counts and percentages.
 
     If benchmark_path is provided (a CSV with columns 'label_id' and 'count'),
     also writes class_X_%_of_total_class columns showing what fraction of each
@@ -441,11 +477,12 @@ def summarize_classes_in_clusters_csv(
             cluster = _normalize_cluster(cluster_raw)
             if not cluster:
                 continue
-            class_id = _extract_class_id(image_id)
             if cluster not in cluster_class_counts:
                 cluster_class_counts[cluster] = Counter()
-            cluster_class_counts[cluster][class_id] += 1
             cluster_totals[cluster] += 1
+            class_id = _extract_class_id(image_id)
+            if class_id is not None:
+                cluster_class_counts[cluster][class_id] += 1
 
     # Load benchmark totals if provided
     benchmark: dict[str, int] = {}
@@ -501,3 +538,16 @@ def summarize_classes_in_clusters_csv(
             writer.writerow(row)
 
     return output_path
+
+
+def _count_total_num_classes(summary_classes_path: Path) -> int:
+    """Count the dataset-wide class columns present in clusters_summary_classes.csv."""
+    with summary_classes_path.open("r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        if reader.fieldnames is None:
+            raise ValueError("clusters_summary_classes.csv has no header row")
+        return sum(
+            1
+            for field in reader.fieldnames
+            if _class_from_cluster_percent_column(field) is not None
+        )
