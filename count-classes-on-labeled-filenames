@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-"""CLI script for writing classes_in_dataset.csv from labeled image filenames."""
+"""CLI script for writing classes_in_dataset.csv from labeled image filenames.
+
+Optionally enriches each class ID with a class name loaded from a BIGLE
+``labels.csv`` file passed via ``--biigleID-to-names-file``.
+"""
 
 import sys
 from multiprocessing import freeze_support

@@ -115,7 +115,7 @@ Standalone helper script:
 
 | Script | Purpose |
 | --- | --- |
-| `count-classes-on-labeled-filenames` | Scan a directory tree of labeled image filenames and write `classes_in_dataset.csv` with one row per extracted class ID. |
+| `count-classes-on-labeled-filenames` | Scan a directory tree of labeled image filenames and write `classes_in_dataset.csv` with one row per extracted class ID, optionally enriched with class names from a BIGLE labels CSV. |
 
 Basic run:
 
@@ -156,6 +156,22 @@ This helper walks `--files-dir` recursively, reads the last
 filename, and writes `classes_in_dataset.csv` with the headers `class_ID` and
 `num_objs`. Supported image extensions are `.jpg`, `.jpeg`, `.png`, `.bmp`,
 `.tif`, `.tiff`, and `.webp`.
+
+To also write class names, pass a BIGLE labels CSV such as `labels.csv` with at
+least `id` and `name` columns:
+
+```bash
+python count-classes-on-labeled-filenames \
+  --files-dir /path/to/folder/ \
+  --num-characters-to-read-class 4 \
+  --biigleID-to-names-file /path/to/labels.csv \
+  --output-dir /path/to/output/directory/
+```
+
+With `--biigleID-to-names-file`, the helper matches each extracted `class_ID`
+against the BIIGLE CSV `id` column and writes `classes_in_dataset.csv` with the
+headers `class_ID`, `class_name`, and `num_objs`. If the option is omitted, the
+command keeps the current behavior and writes only `class_ID` and `num_objs`.
 
 ### Rerun dimensionality-reduction (UMAP) + clustering (HDBSCAN) without embeddings (DINOv2)
 
@@ -564,7 +580,7 @@ The output directory contains:
   UMAP values, length = `umap_dim` unless `write_dimreduction_vector: false`,
   in which case the column is empty)
 - `clusters_summary.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster]`
-- `classes_in_dataset.csv` with columns `[class_ID, num_objs]`, written by `python count-classes-on-labeled-filenames ...` after recursively scanning the labeled image directory
+- `classes_in_dataset.csv` with columns `[class_ID, num_objs]` by default, or `[class_ID, class_name, num_objs]` when `python count-classes-on-labeled-filenames ... --biigleID-to-names-file /path/to/labels.csv` is used after recursively scanning the labeled image directory
 - `clusters_summary_classes.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster, class_X, class_X_%_of_the_cluster, ...]` — one row per cluster, one set of columns per valid class found across the dataset. A class is recognized only when the basename ends with `_class_1234.jpg`; non-matching filenames still contribute to `num_objs_in_cluster` but are excluded from class-derived columns. Add `class_X_%_of_total_class` columns by supplying `--classes-benchmark-file`.
 - `clusters_dominant_classes_and_diff.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster, 1st_dom_class, 1st_dom_%, 1st_dom_num_objs, 2nd_dom_class, 2nd_dom_%, 2nd_dom_num_objs, diff_1st-2nd_%, diff_1st-2nd_norm]`, derived from the `num_objs_in_cluster`, `num_classes_in_cluster`, `class_X`, and `class_X_%_of_the_cluster` columns in `clusters_summary_classes.csv`
 - `clustering_score_report.csv` with columns `[average_diff_1st-2nd_norm, norm_num_dom_classes, inv_average_num_classes_in_clusters, proportion_objs_in_noise_cluster, average_score]`, derived from `clusters_dominant_classes_and_diff.csv` together with the sibling `clusters_summary_classes.csv`
