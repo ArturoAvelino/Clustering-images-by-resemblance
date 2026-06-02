@@ -56,6 +56,17 @@ def extract_strict_jpg_class_id(filename: str) -> str | None:
     return match.group(1)
 
 
+def is_strictly_labeled_jpg(filename: str) -> bool:
+    """
+    Return ``True`` when ``filename`` encodes a 4-digit JPG class label.
+
+    A filename is treated as labeled only when its basename ends with the
+    exact pattern ``_class_1234.jpg``. This matches the class-validation rule
+    used by the cluster summary outputs.
+    """
+    return extract_strict_jpg_class_id(filename) is not None
+
+
 def _is_supported_image_filename(filename: str) -> bool:
     _, dot, extension = filename.rpartition(".")
     if not dot:

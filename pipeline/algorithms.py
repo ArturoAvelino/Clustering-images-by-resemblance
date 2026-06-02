@@ -8,6 +8,7 @@ from typing import List
 
 import numpy as np
 
+from .class_labels import is_strictly_labeled_jpg
 from .config import ClusterResult, PipelineConfig
 
 
@@ -109,7 +110,15 @@ class HDBSCANClusterer:
         exemplars: np.ndarray | None = None,
         dim_reduction: np.ndarray | List[List[float]] | None = None,
     ) -> None:
-        """Write clustering results to CSV with optional HDBSCAN metadata and UMAP output."""
+        """
+        Write clustering results to CSV with label validation metadata.
+
+        The output always includes a ``labeled`` column. A row is marked
+        ``True`` only when the basename from ``image_id`` ends with the exact
+        pattern ``_class_1234.jpg``; otherwise it is marked ``False``.
+        Optional HDBSCAN metadata and the serialized UMAP vector are appended
+        after that column.
+        """
         out_csv.parent.mkdir(parents=True, exist_ok=True)
         if dim_reduction is not None:
             if isinstance(dim_reduction, np.ndarray):
@@ -125,11 +134,12 @@ class HDBSCANClusterer:
                 )
         with out_csv.open("w", encoding="utf-8", newline="") as f:
             writer = csv.writer(f)
-            headers = ["image_id", "cluster", "probabilities", "outlier_scores"]
+            headers = ["image_id", "cluster", "labeled", "probabilities", "outlier_scores"]
             if dim_reduction is not None:
                 headers.append("dim_reduction")
             writer.writerow(headers)
             for idx, (rel, label) in enumerate(zip(rel_paths, labels)):
+                labeled = is_strictly_labeled_jpg(rel)
                 prob = (
                     ""
                     if probabilities is None
@@ -140,7 +150,7 @@ class HDBSCANClusterer:
                     if outlier_scores is None
                     else round(float(outlier_scores[idx]), 4)
                 )
-                row_values = [rel, int(label), prob, outlier]
+                row_values = [rel, int(label), labeled, prob, outlier]
                 if dim_reduction is not None:
                     row = (
                         dim_reduction[idx].tolist()

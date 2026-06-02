@@ -8,7 +8,7 @@ This project clusters unlabeled arthropod images using a three-stage pipeline:
 
 (Optional) **Size-aware weighting**: Adds a size feature (non-background pixel area) so arthropod size influences clustering.
 
-Artifacts are written to the output directory, including embeddings, reduced vectors, and a CSV that maps each image to a cluster label plus HDBSCAN metadata.
+Artifacts are written to the output directory, including embeddings, reduced vectors, and a CSV that maps each image to a cluster label plus HDBSCAN metadata. The pipeline now also annotates each `clusters.csv` row with whether the filename carries a valid strict class label.
 
 ## Requirements
 
@@ -172,6 +172,13 @@ With `--biigleID-to-names-file`, the helper matches each extracted `class_ID`
 against the BIIGLE CSV `id` column and writes `classes_in_dataset.csv` with the
 headers `class_ID`, `class_name`, and `num_objs`. If the option is omitted, the
 command keeps the current behavior and writes only `class_ID` and `num_objs`.
+
+The clustering pipeline reuses the same strict filename rule for the
+`clusters.csv` `labeled` column and for class-based summary files:
+
+- `True`: basename ends with `_class_1234.jpg`
+- `False`: any other basename, including missing `_class_`, non-4-digit class
+  values, or extensions other than `.jpg`
 
 ### Rerun dimensionality-reduction (UMAP) + clustering (HDBSCAN) without embeddings (DINOv2)
 
@@ -575,10 +582,13 @@ output_csv = clustering(
 
 The output directory contains:
 
-- `clusters.csv` with columns `[image_id, cluster, probabilities, outlier_scores, dim_reduction]`
+- `clusters.csv` with columns `[image_id, cluster, labeled, probabilities, outlier_scores, dim_reduction]`
   (noise is `-1`; `dim_reduction` is a JSON array of
   UMAP values, length = `umap_dim` unless `write_dimreduction_vector: false`,
-  in which case the column is empty)
+  in which case the column is empty). `labeled` is `True` only when the basename in
+  `image_id` ends exactly with `_class_1234.jpg`, meaning `_class_` appears immediately
+  before a 4-digit class value and that value is immediately followed by the `.jpg`
+  extension. Otherwise `labeled` is `False`.
 - `clusters_summary.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster]`
 - `classes_in_dataset.csv` with columns `[class_ID, num_objs]` by default, or `[class_ID, class_name, num_objs]` when `python count-classes-on-labeled-filenames ... --biigleID-to-names-file /path/to/labels.csv` is used after recursively scanning the labeled image directory
 - `clusters_summary_classes.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster, class_X, class_X_%_of_the_cluster, ...]` — one row per cluster, one set of columns per valid class found across the dataset. A class is recognized only when the basename ends with `_class_1234.jpg`; non-matching filenames still contribute to `num_objs_in_cluster` but are excluded from class-derived columns. Add `class_X_%_of_total_class` columns by supplying `--classes-benchmark-file`.

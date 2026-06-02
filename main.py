@@ -18,8 +18,9 @@ Inputs
 
 Outputs
 -------
-- clusters.csv: columns [image_id, cluster, probabilities, outlier_scores, dim_reduction]
-  (noise labeled as -1; dim_reduction is a JSON array unless write_dimreduction_vector is false).
+- clusters.csv: columns [image_id, cluster, labeled, probabilities, outlier_scores, dim_reduction]
+  (`labeled` is true only for basenames ending with `_class_1234.jpg`; noise is labeled as -1;
+  dim_reduction is a JSON array unless write_dimreduction_vector is false).
 - clusters_summary.csv: columns [cluster_id, num_objs_in_cluster, num_classes_in_cluster].
 - classes_in_dataset.csv: columns [class_ID, num_objs] by default, or
   [class_ID, class_name, num_objs] when generated with

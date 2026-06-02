@@ -580,8 +580,9 @@ def clustering(
     """
     Run the full clustering pipeline and return the path to the CSV output.
 
-    The CSV includes columns: image_id, cluster, probabilities, outlier_scores,
-    dim_reduction.
+    The CSV includes columns: image_id, cluster, labeled, probabilities,
+    outlier_scores, dim_reduction. ``labeled`` is ``True`` only when the
+    basename ends with ``_class_1234.jpg``.
 
     Parameters
     ----------
