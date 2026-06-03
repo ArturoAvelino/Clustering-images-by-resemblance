@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Utilities for counting class IDs in filenames and enriching them with names."""
+"""Utilities for counting strict JPG class IDs in filenames and enriching them with names."""
 
 import argparse
 import csv
@@ -10,7 +10,6 @@ from collections import Counter
 from pathlib import Path
 from typing import Iterable, Mapping, Optional
 
-DEFAULT_CLASS_ID_NUM_CHARACTERS = 4
 STRICT_JPG_CLASS_ID_PATTERN = re.compile(r"_class_(\d{4})\.jpg$")
 SUPPORTED_IMAGE_EXTENSIONS = frozenset(
     {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
@@ -22,24 +21,6 @@ def _sort_key(value: str) -> tuple[int, object]:
         return (0, int(value))
     except ValueError:
         return (1, value)
-
-
-def extract_class_id_from_filename(
-    filename: str,
-    num_characters_to_read_class: int = DEFAULT_CLASS_ID_NUM_CHARACTERS,
-) -> str:
-    """
-    Extract the class ID from the last characters before a filename extension.
-
-    If the filename stem is shorter than ``num_characters_to_read_class``, the
-    full stem is returned.
-    """
-    if num_characters_to_read_class <= 0:
-        raise ValueError("num_characters_to_read_class must be greater than 0")
-    stem, dot, _ = filename.rpartition(".")
-    if not dot:
-        stem = filename
-    return stem[-num_characters_to_read_class:]
 
 
 def extract_strict_jpg_class_id(filename: str) -> str | None:
@@ -98,17 +79,20 @@ def iter_image_filenames(root_dir: Path) -> Iterable[str]:
 
 def count_classes_in_labeled_filenames(
     files_dir: Path,
-    num_characters_to_read_class: int,
 ) -> Counter[str]:
     """
-    Count image files by the class ID encoded in the end of each filename stem.
+    Count image files by the strict class ID encoded in each JPG basename.
 
     The directory traversal is recursive and uses ``os.scandir`` to minimize
-    per-file overhead when scanning very large datasets.
+    per-file overhead when scanning very large datasets. Only basenames ending
+    with ``_class_1234.jpg`` contribute counts; all other filenames are
+    ignored.
     """
     counts: Counter[str] = Counter()
     for filename in iter_image_filenames(files_dir):
-        class_id = extract_class_id_from_filename(filename, num_characters_to_read_class)
+        class_id = extract_strict_jpg_class_id(filename)
+        if class_id is None:
+            continue
         counts[class_id] += 1
     return counts
 
@@ -174,7 +158,6 @@ def write_classes_in_dataset_csv(
 def generate_classes_in_dataset_csv(
     files_dir: Path,
     output_dir: Path,
-    num_characters_to_read_class: int,
     *,
     biigle_id_to_names_file: Optional[Path] = None,
 ) -> Path:
@@ -183,11 +166,9 @@ def generate_classes_in_dataset_csv(
 
     When ``biigle_id_to_names_file`` is provided, class names are loaded from
     its ``id`` and ``name`` columns and written alongside each ``class_ID``.
+    Only files whose basenames end with ``_class_1234.jpg`` are counted.
     """
-    counts = count_classes_in_labeled_filenames(
-        files_dir=files_dir,
-        num_characters_to_read_class=num_characters_to_read_class,
-    )
+    counts = count_classes_in_labeled_filenames(files_dir=files_dir)
     class_names = None
     if biigle_id_to_names_file is not None:
         class_names = load_bigle_id_to_name_map(biigle_id_to_names_file)
@@ -206,9 +187,9 @@ def build_count_classes_parser(
     parser = argparse.ArgumentParser(
         prog=prog,
         description=(
-            "Count image files by the class ID stored in the last characters of "
-            "each filename stem and write classes_in_dataset.csv. Optionally "
-            "enrich the output with class names from a BIGLE labels CSV."
+            "Count image files whose basenames end with _class_1234.jpg and "
+            "write classes_in_dataset.csv. Optionally enrich the output with "
+            "class names from a BIGLE labels CSV."
         ),
     )
     parser.add_argument(
@@ -220,8 +201,11 @@ def build_count_classes_parser(
     parser.add_argument(
         "--num-characters-to-read-class",
         type=int,
-        required=True,
-        help="Number of trailing filename-stem characters to use as the class ID.",
+        default=4,
+        help=(
+            "Deprecated compatibility option. The command now always requires "
+            "the strict pattern _class_1234.jpg and ignores this value."
+        ),
     )
     parser.add_argument(
         "--biigleID-to-names-file",
@@ -252,8 +236,6 @@ def parse_count_classes_args(
 def main(argv: Optional[list[str]] = None, *, prog: Optional[str] = None) -> int:
     """CLI entry point for ``count-classes-on-labeled-filenames``."""
     args = parse_count_classes_args(argv, prog=prog)
-    if args.num_characters_to_read_class <= 0:
-        raise SystemExit("--num-characters-to-read-class must be greater than 0")
     if not args.files_dir.exists():
         raise SystemExit(f"--files-dir does not exist: {args.files_dir}")
     if not args.files_dir.is_dir():
@@ -282,7 +264,6 @@ def main(argv: Optional[list[str]] = None, *, prog: Optional[str] = None) -> int
         generate_classes_in_dataset_csv(
             files_dir=args.files_dir,
             output_dir=args.output_dir,
-            num_characters_to_read_class=args.num_characters_to_read_class,
             biigle_id_to_names_file=args.biigleID_to_names_file,
         )
     except (OSError, ValueError) as exc:

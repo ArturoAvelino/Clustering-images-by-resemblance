@@ -115,7 +115,7 @@ Standalone helper script:
 
 | Script | Purpose |
 | --- | --- |
-| `count-classes-on-labeled-filenames` | Scan a directory tree of labeled image filenames and write `classes_in_dataset.csv` with one row per extracted class ID, optionally enriched with class names from a BIGLE labels CSV. |
+| `count-classes-on-labeled-filenames` | Scan a directory tree and count only basenames that end with `_class_1234.jpg`, writing `classes_in_dataset.csv` with one row per extracted class ID, optionally enriched with class names from a BIGLE labels CSV. |
 
 Basic run:
 
@@ -141,21 +141,21 @@ Print the values of all the config variables used, including default interval va
 python clustering compute-clusters --config /path/to/config.yaml --print-config
 ```
 
-Generate `classes_in_dataset.csv` from the trailing characters of each image
-filename stem:
+Generate `classes_in_dataset.csv` from image filenames that follow the strict
+`_class_1234.jpg` rule:
 
 ```bash
 python count-classes-on-labeled-filenames \
   --files-dir /path/to/folder/ \
-  --num-characters-to-read-class 4 \
   --output-dir /path/to/output/directory/
 ```
 
-This helper walks `--files-dir` recursively, reads the last
-`--num-characters-to-read-class` characters before the extension of every image
-filename, and writes `classes_in_dataset.csv` with the headers `class_ID` and
-`num_objs`. Supported image extensions are `.jpg`, `.jpeg`, `.png`, `.bmp`,
-`.tif`, `.tiff`, and `.webp`.
+This helper walks `--files-dir` recursively and counts only files whose
+basename ends exactly with `_class_1234.jpg`. That means `_class_` must appear
+immediately before the class value, the class value must be exactly 4 digits,
+and those digits must be immediately followed by the `.jpg` extension. Files
+that do not match that exact basename pattern are ignored. The output
+`classes_in_dataset.csv` uses the headers `class_ID` and `num_objs`.
 
 To also write class names, pass a BIGLE labels CSV such as `labels.csv` with at
 least `id` and `name` columns:
@@ -163,7 +163,6 @@ least `id` and `name` columns:
 ```bash
 python count-classes-on-labeled-filenames \
   --files-dir /path/to/folder/ \
-  --num-characters-to-read-class 4 \
   --biigleID-to-names-file /path/to/labels.csv \
   --output-dir /path/to/output/directory/
 ```
@@ -179,6 +178,10 @@ The clustering pipeline reuses the same strict filename rule for the
 - `True`: basename ends with `_class_1234.jpg`
 - `False`: any other basename, including missing `_class_`, non-4-digit class
   values, or extensions other than `.jpg`
+
+`count-classes-on-labeled-filenames` now uses that same strict rule. The old
+`--num-characters-to-read-class` option is kept only for CLI compatibility and
+is ignored.
 
 ### Rerun dimensionality-reduction (UMAP) + clustering (HDBSCAN) without embeddings (DINOv2)
 
@@ -252,7 +255,6 @@ If you need the dataset-wide counts for those filename labels, generate
 ```bash
 python count-classes-on-labeled-filenames \
   --files-dir /path/to/folder/ \
-  --num-characters-to-read-class 4 \
   --output-dir /path/to/output/directory/
 ```
 

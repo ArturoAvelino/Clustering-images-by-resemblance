@@ -25,6 +25,7 @@ Outputs
 - classes_in_dataset.csv: columns [class_ID, num_objs] by default, or
   [class_ID, class_name, num_objs] when generated with
   `python count-classes-on-labeled-filenames --biigleID-to-names-file ...`.
+  This helper counts only basenames ending with `_class_1234.jpg`.
 - clusters_summary_classes.csv: per-cluster class counts and percentages for
   basenames that end with `_class_1234.jpg`; non-matching filenames still count
   toward num_objs_in_cluster but are ignored for class-derived columns.
