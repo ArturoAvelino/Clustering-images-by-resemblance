@@ -348,16 +348,21 @@ Use `--output` with the standalone script to choose a custom output path.
 - `proportion_objs_in_noise_cluster`
 - `average_score`
 
-`average_diff_1st-2nd_norm` is the average of `diff_1st-2nd_norm` from
-`clusters_dominant_classes_and_diff.csv`. `norm_num_dom_classes` is the number
+where,
+- `average_diff_1st-2nd_norm` is the average of `diff_1st-2nd_norm` from
+`clusters_dominant_classes_and_diff.csv`.
+- `norm_num_dom_classes` is the number
 of distinct non-`0000` values in `1st_dom_class`, divided by the total number of
 different classes present in `clusters_summary_classes.csv`.
-`inv_average_num_classes_in_clusters` is `1 / average_num_classes_in_clusters`,
+- `inv_average_num_classes_in_clusters` is `1 / average_num_classes_in_clusters`,
 where `average_num_classes_in_clusters` is the average of
 `num_classes_in_cluster` across `clusters_dominant_classes_and_diff.csv`.
-`proportion_objs_in_noise_cluster` is computed as
+- `proportion_objs_in_noise_cluster` is computed as
 `(total input images - objects in cluster -1) / total input images`.
-`average_score` is the arithmetic mean of those four normalized values.
+- `average_score` is the arithmetic mean of those four normalized values.
+
+The scores have been defined to have values between `0` and `1` only, where `0`
+is the worst possible score and `1` is the best possible score.
 
 To regenerate only the score report from an existing
 `clusters_dominant_classes_and_diff.csv`:

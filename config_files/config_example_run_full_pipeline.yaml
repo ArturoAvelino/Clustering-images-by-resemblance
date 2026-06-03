@@ -39,6 +39,9 @@ umap_dim: 30
 # Minimum cluster size for HDBSCAN (smaller values produce more clusters).
 hdbscan_min_cluster_size: 25
 
+# HDBSCAN minimum samples (higher values produce more conservative clusters).
+hdb_min_samples: 10
+
 # Write the UMAP vector to the dim_reduction column in clusters.csv.
 write_dimreduction_vector: true
 
