@@ -63,8 +63,14 @@ dino_model: "/path/to/dinov2"
 batch_size: 16
 num_workers: 2
 umap_dim: 30
+umap_neighbors: 30
+umap_min_dist: 0.0
+umap_metric: "cosine"
 hdbscan_min_cluster_size: 25
+hdb_min_samples: 10
 two_pass: true
+refine_prob_threshold: 0.7
+refine_include_noise: true
 autocrop: true
 image_size_in_kbytes_min: 10
 image_size_in_kbytes_max: 99.99

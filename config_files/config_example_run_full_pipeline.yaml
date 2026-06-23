@@ -36,6 +36,15 @@ num_workers: 2
 # Target dimensionality-reduction from UMAP.
 umap_dim: 30
 
+# Number of nearest neighbors used by UMAP.
+umap_neighbors: 30
+
+# UMAP minimum distance between points.
+umap_min_dist: 0.0
+
+# UMAP distance metric.
+umap_metric: "cosine"
+
 # Minimum cluster size for HDBSCAN (smaller values produce more clusters).
 hdbscan_min_cluster_size: 25
 
@@ -55,6 +64,10 @@ two_pass: false
 # Use a lower value such as 0.5 to refine fewer samples, or a higher value such
 # as 0.8 to refine more borderline samples. The default is 0.7.
 refine_prob_threshold: 0.7
+
+# When two_pass is true, also send pass-1 noise points (cluster -1) to pass 2.
+# If false, only low-probability non-noise samples are refined.
+refine_include_noise: true
 
 # Enable automatic cropping of background-colored margins.
 # Set to false if backgrounds are not consistent or if crops are already tight.

@@ -475,9 +475,9 @@ What `calibrate_threshold.py` does:
 
 The annotated YAML template lives at `config_files/config_example_run_full_pipeline.yaml`
 and is the recommended starting point for full runs. A second template,
-`config_files/config_example_only_dimreduction_and_clustering.yaml`, shows the
+`config_files/config_example_run_only_dimreduction_and_clustering.yaml`, shows the
 minimal inputs to rerun UMAP + HDBSCAN from cached DINOv2 outputs. A third template,
-`config_files/config_example_only_clustering.yaml`, shows the minimal inputs to rerun
+`config_files/config_example_run_only_clustering.yaml`, shows the minimal inputs to rerun
 HDBSCAN using cached UMAP outputs. The pipeline reads YAML configs directly. The
 most important fields are:
 
@@ -487,10 +487,15 @@ most important fields are:
 - `batch_size`
 - `num_workers`
 - `umap_dim`
+- `umap_neighbors` (default `30`)
+- `umap_min_dist` (default `0.0`)
+- `umap_metric` (default `cosine`)
 - `hdbscan_min_cluster_size`
+- `hdb_min_samples` (default `10`)
 - `write_dimreduction_vector` (default `true`, writes the UMAP vector to `clusters.csv`)
 - `two_pass` or `fast_tune` (recommended: `false`)
 - `refine_prob_threshold` (default `0.7`; used only when `two_pass: true`)
+- `refine_include_noise` (default `true`; used only when `two_pass: true`)
 - `autocrop` (default: `false`)
 - `background_color` (RGB background color as `[R, G, B]`; default is tuned for blue)
 - `autocrop_threshold` (color-distance threshold used to separate background from foreground)
@@ -626,10 +631,18 @@ When `two_pass: true` is enabled in the configuration input file, the pipeline r
 HDBSCAN reports a membership probability in the range 0-1 for each sample; lower
 values mean weaker confidence that the sample belongs to its assigned cluster.
 During two-pass mode, any sample with probability below `refine_prob_threshold`
-is sent to pass 2 for refinement. If `refine_include_noise: true`, samples
-assigned to noise (`cluster == -1`) are also refined regardless of probability.
-The value is ignored when `two_pass: false`, `fast_tune: true`, or when using the
-`only-dimreduction-and-clustering` / `only-clustering` compute modes.
+is sent to pass 2 for refinement.
+
+`refine_include_noise` controls whether pass-1 noise assignments are always
+refined. When `refine_include_noise: true`, samples assigned to noise
+(`cluster == -1`) are also sent to pass 2 regardless of probability. When it is
+`false`, only the probability threshold decides which samples are refined.
+
+Both refinement settings are valid config keys in all three example YAML files so
+you can keep a consistent config schema across run modes. They are only used by
+full runs with `two_pass: true`; they are ignored when `two_pass: false`,
+`fast_tune: true`, or when using the `only-dimreduction-and-clustering` /
+`only-clustering` compute modes.
 
 Use the default `refine_prob_threshold: 0.7` as a balanced starting point. Lower
 values such as `0.4-0.6` refine fewer samples and run faster, but can leave

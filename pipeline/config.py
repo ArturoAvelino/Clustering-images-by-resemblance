@@ -11,6 +11,14 @@ import yaml
 
 @dataclass
 class PipelineConfig:
+    """Pipeline runtime configuration loaded from CLI flags and/or YAML files.
+
+    The same schema is accepted for full runs, `only-dimreduction-and-clustering`,
+    and `only-clustering`. Some fields are mode-specific at runtime; for example,
+    `refine_prob_threshold` and `refine_include_noise` are only used when
+    `two_pass` is enabled during a full run.
+    """
+
     input_dir: Optional[Path] = None
     output_dir: Path = Path("")
     compute: str = "full"

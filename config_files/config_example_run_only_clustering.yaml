@@ -31,6 +31,7 @@ size_feature_weight: 0.0
 # Write the UMAP vector to the dim_reduction column in clusters.csv.
 write_dimreduction_vector: true
 
-# refine_prob_threshold is available in full two-pass runs only.
-# It has no effect when compute is only-clustering.
-# refine_prob_threshold: 0.7
+# These refinement settings are accepted in every config file so the same schema
+# can be reused across run modes. They only affect full runs with two_pass: true.
+refine_prob_threshold: 0.7
+refine_include_noise: true

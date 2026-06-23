@@ -114,9 +114,21 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
     )
     refine = parser.add_mutually_exclusive_group()
     refine.add_argument(
-        "--refine-include-noise", dest="refine_include_noise", action="store_true", default=None
+        "--refine-include-noise",
+        dest="refine_include_noise",
+        action="store_true",
+        default=None,
+        help=(
+            "Two-pass mode only: also send pass-1 noise points (cluster -1) to the "
+            "refinement pass. Default: enabled."
+        ),
     )
-    refine.add_argument("--no-refine-noise", dest="refine_include_noise", action="store_false")
+    refine.add_argument(
+        "--no-refine-noise",
+        dest="refine_include_noise",
+        action="store_false",
+        help="Two-pass mode only: do not automatically refine pass-1 noise points.",
+    )
     write_dim = parser.add_mutually_exclusive_group()
     write_dim.add_argument(
         "--write-dimreduction-vector", dest="write_dimreduction_vector", action="store_true", default=None
