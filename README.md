@@ -10,6 +10,12 @@ This project clusters unlabeled arthropod images using a three-stage pipeline:
 
 Artifacts are written to the output directory, including embeddings, reduced vectors, and a CSV that maps each image to a cluster label plus HDBSCAN metadata. The pipeline now also annotates each `clusters.csv` row with whether the filename carries a valid strict class label.
 
+After the main run finishes, automatic subclustering is enabled by default. Any
+final cluster with more than 1000 objects is processed again as its own subset,
+using the cached DINOv2 artifacts from the main run and fixed subclustering
+settings (`umap_dim=60`, `umap_neighbors=30`, `hdbscan_min_cluster_size=7`,
+`hdb_min_samples=6`).
+
 ## Requirements
 
 - Python 3.11 or higher.
@@ -123,6 +129,20 @@ Basic run:
 python clustering compute-clusters --input-dir /path/to/images --output-dir /path/to/output
 ```
 
+Disable automatic subclustering, or change the trigger threshold:
+
+```bash
+python clustering compute-clusters \
+  --input-dir /path/to/images \
+  --output-dir /path/to/output \
+  --no-subclustering
+
+python clustering compute-clusters \
+  --input-dir /path/to/images \
+  --output-dir /path/to/output \
+  --min-for-subclustering 2000
+```
+
 Show help for the clustering pipeline options:
 
 ```bash
@@ -205,6 +225,11 @@ contain:
 The new outputs (`umap.npy`, `clusters.csv`, `images.txt`, `clusters_summary.csv`)
 are written to `output_dir`.
 
+Automatic subclustering also works in this mode because the command has access
+to `dino_files`. It uses the cached DINOv2 artifacts from `dino_files`, the
+newly computed parent `umap.npy` from `output_dir`, and writes subcluster outputs
+under `output_dir/subclusters/`.
+
 ### Rerun clustering (HDBSCAN) without embeddings (DINOv2) + dimensionality-reduction (UMAP)
 
 Run only HDBSCAN using UMAP outputs from a previous run:
@@ -224,6 +249,12 @@ contain:
 
 The new outputs (`clusters.csv`, `images.txt`, `clusters_summary.csv`) are written
 to `output_dir`.
+
+Automatic subclustering in `only-clustering` mode requires DINOv2 artifacts. If
+you also pass `--dino-files /path/to/previous/dino/output`, the subclustering
+step slices those cached embeddings and sizes. If `--dino-files` is omitted,
+the main clustering run still completes, but post-pipeline subclustering is
+skipped because there are no embeddings to reuse for subset UMAP.
 
 ### Generate a summary file from an existing clusters.csv:
 
@@ -496,6 +527,8 @@ most important fields are:
 - `two_pass` or `fast_tune` (recommended: `false`)
 - `refine_prob_threshold` (default `0.7`; used only when `two_pass: true`)
 - `refine_include_noise` (default `true`; used only when `two_pass: true`)
+- `subclustering` (default `true`; runs automatic post-pipeline subclustering)
+- `min_for_subclustering` (default `1000`; clusters must be larger than this value)
 - `autocrop` (default: `false`)
 - `background_color` (RGB background color as `[R, G, B]`; default is tuned for blue)
 - `autocrop_threshold` (color-distance threshold used to separate background from foreground)
@@ -564,6 +597,29 @@ from `umap_files`. You can point `umap_files` at the output directory of a
 previous run (for example `/path/to/output` or `/path/to/output/umap_hdbscan_only`)
 as long as it contains `umap.npy` and `images.txt`.
 
+### Automatic subclustering
+
+Automatic subclustering runs after the final `clusters.csv` has been written and
+summarized unless `--no-subclustering` or `subclustering: false` is set. It
+checks every final cluster label, including noise label `-1`, and selects labels
+whose object count is greater than `min_for_subclustering`.
+
+For each selected parent cluster, the pipeline creates
+`output_dir/subclusters/cluster_<label>/` and writes:
+
+- subset `images.txt`
+- subset `embeddings.dat`, `embeddings.json`, and `sizes.npy` copied from the cached parent DINOv2 outputs
+- `parent_umap.npy`, containing the selected rows from the parent UMAP output for traceability
+- a fresh subset `umap.npy` computed with `umap_dim=60` and `umap_neighbors=30`
+- subset `clusters.csv` computed with `hdbscan_min_cluster_size=7` and `hdb_min_samples=6`
+- the usual summary CSV files for that subset
+
+The step does not re-run DINOv2 embedding. It slices the cached embedding matrix
+and size array, then runs only the subset UMAP and HDBSCAN stages needed for the
+large parent cluster. A top-level `output_dir/subclusters/subclusters_summary.csv`
+lists each parent cluster that was subclustered and the path to its subset
+`clusters.csv`.
+
 ## Python API
 
 You can run the pipeline in Python:
@@ -609,6 +665,10 @@ The output directory contains:
 - `embeddings.dat` and `embeddings.json` (embedding matrix + metadata)
 - `umap.npy` (UMAP-reduced vectors)
 - `images.txt` (stable list of image paths used)
+- `subclusters/` when automatic subclustering finds oversized final clusters.
+  Each `subclusters/cluster_<label>/` directory contains subset cached artifacts,
+  `parent_umap.npy`, a fresh subset `umap.npy`, subset `clusters.csv`, and the
+  usual summary CSVs.
 
 When `--two-pass` or `--fast-tune` is used, outputs are grouped under `output_dir/stages/`.
 When running `--compute only-dimreduction-and-clustering`, embeddings are read from

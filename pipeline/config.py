@@ -60,6 +60,8 @@ class PipelineConfig:
     force: bool = False
     torch_threads: Optional[int] = None
     classes_benchmark_file: Optional[Path] = None
+    subclustering: bool = True
+    min_for_subclustering: int = 1000
 
 
 @dataclass
@@ -166,6 +168,8 @@ def build_config(args) -> PipelineConfig:
         "force": args.force,
         "torch_threads": args.torch_threads,
         "classes_benchmark_file": getattr(args, "classes_benchmark_file", None),
+        "subclustering": getattr(args, "subclustering", None),
+        "min_for_subclustering": getattr(args, "min_for_subclustering", None),
     }
     for key, value in overrides.items():
         if value is not None:
@@ -278,6 +282,8 @@ def validate_config(cfg: PipelineConfig) -> None:
         errors.append("refine_prob_threshold must be between 0 and 1")
     if cfg.two_pass and cfg.fast_tune:
         errors.append("two_pass and fast_tune cannot both be true")
+    if cfg.min_for_subclustering < 1:
+        errors.append("min_for_subclustering must be >= 1")
     if errors:
         msg = "Invalid configuration:\n  - " + "\n  - ".join(errors)
         raise ValueError(msg)

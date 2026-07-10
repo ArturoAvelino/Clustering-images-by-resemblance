@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from collections import Counter, defaultdict
+import csv
+from dataclasses import replace
 import json
 import time
 from pathlib import Path
-from typing import List
+from typing import Iterable, List
 
 import numpy as np
 from tqdm import tqdm
@@ -26,6 +29,14 @@ def summarize_cluster_outputs(clusters_csv_path: Path, benchmark_path: Path | No
     summarize_clusters_csv(clusters_csv_path)
     summary_classes_path = summarize_classes_in_clusters_csv(clusters_csv_path, benchmark_path)
     summarize_cluster_dominant_classes_and_diff_csv(summary_classes_path)
+
+
+SUBCLUSTERING_PARAMS = {
+    "umap_dim": 60,
+    "hdbscan_min_cluster_size": 7,
+    "hdb_min_samples": 6,
+    "umap_neighbors": 30,
+}
 
 
 def stage_dir(cfg: PipelineConfig, stage: str) -> Path:
@@ -59,6 +70,292 @@ def _log_timing(log_path: Path, message: str) -> None:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("a", encoding="utf-8") as f:
         f.write(message + "\n")
+
+
+def _read_image_index(index_path: Path) -> list[str]:
+    with index_path.open("r", encoding="utf-8") as f:
+        return [line.strip() for line in f if line.strip()]
+
+
+def _write_image_index(index_path: Path, rel_paths: Iterable[str]) -> None:
+    index_path.parent.mkdir(parents=True, exist_ok=True)
+    with index_path.open("w", encoding="utf-8") as f:
+        for rel in rel_paths:
+            f.write(rel + "\n")
+
+
+def _required_subclustering_artifacts(paths: StagePaths) -> dict[str, Path]:
+    return {
+        "images.txt": paths.index_path,
+        "embeddings.dat": paths.emb_path,
+        "embeddings.json": paths.meta_path,
+        "sizes.npy": paths.size_path,
+        "umap.npy": paths.umap_path,
+    }
+
+
+def _load_cluster_members(clusters_csv_path: Path) -> dict[int, list[str]]:
+    """Read final cluster assignments as cluster label -> image paths."""
+    members: dict[int, list[str]] = defaultdict(list)
+    with clusters_csv_path.open("r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        if reader.fieldnames is None:
+            raise ValueError(f"{clusters_csv_path} has no header row")
+        missing = {"image_id", "cluster"} - set(reader.fieldnames)
+        if missing:
+            raise ValueError(
+                f"{clusters_csv_path} must have columns: {', '.join(sorted(missing))}"
+            )
+        for row in reader:
+            rel = row.get("image_id")
+            label = row.get("cluster")
+            if not rel or label is None:
+                continue
+            members[int(float(label))].append(rel)
+    return dict(members)
+
+
+def _copy_subset_artifacts(
+    source_paths: StagePaths,
+    output_paths: StagePaths,
+    subset_indices: list[int],
+    subset_rel_paths: list[str],
+) -> bool:
+    """Write cached DINOv2 artifacts for a cluster subset without re-embedding images."""
+    previous_rel_paths = (
+        _read_image_index(output_paths.index_path)
+        if output_paths.index_path.exists()
+        else None
+    )
+    subset_changed = previous_rel_paths != subset_rel_paths
+    output_paths.index_path.parent.mkdir(parents=True, exist_ok=True)
+    _write_image_index(output_paths.index_path, subset_rel_paths)
+
+    with source_paths.meta_path.open("r", encoding="utf-8") as f:
+        meta = json.load(f)
+    n = int(meta["num_images"])
+    dim = int(meta["embed_dim"])
+    dtype = np.float16 if meta["dtype"] == "float16" else np.float32
+    if max(subset_indices, default=-1) >= n:
+        raise ValueError("Subclustering subset index exceeds cached embedding count.")
+
+    src_emb = np.memmap(source_paths.emb_path, mode="r", dtype=dtype, shape=(n, dim))
+    dst_emb = np.memmap(
+        output_paths.emb_path,
+        mode="w+",
+        dtype=dtype,
+        shape=(len(subset_indices), dim),
+    )
+    chunk_size = 5000
+    for start in range(0, len(subset_indices), chunk_size):
+        stop = start + chunk_size
+        dst_emb[start:stop] = src_emb[subset_indices[start:stop]]
+    dst_emb.flush()
+
+    sub_meta = dict(meta)
+    sub_meta["num_images"] = len(subset_indices)
+    with output_paths.meta_path.open("w", encoding="utf-8") as f:
+        json.dump(sub_meta, f, indent=2)
+
+    sizes = np.load(source_paths.size_path, mmap_mode="r")
+    if sizes.shape[0] != n:
+        raise ValueError(
+            f"Size feature count ({sizes.shape[0]}) does not match embeddings ({n})."
+        )
+    np.save(output_paths.size_path, np.asarray(sizes[subset_indices]))
+
+    parent_umap = np.load(source_paths.umap_path, mmap_mode="r")
+    if parent_umap.ndim != 2 or parent_umap.shape[0] != n:
+        raise ValueError(
+            "Parent umap.npy must be 2D and match the cached embedding count."
+        )
+    np.save(
+        output_paths.index_path.parent / "parent_umap.npy",
+        np.asarray(parent_umap[subset_indices]),
+    )
+    return subset_changed
+
+
+def _subclustering_config(cfg: PipelineConfig, output_dir: Path) -> PipelineConfig:
+    """Return a config for the fixed automatic subclustering parameters."""
+    return replace(
+        cfg,
+        output_dir=output_dir,
+        compute="full",
+        two_pass=False,
+        fast_tune=False,
+        max_images=None,
+        subclustering=False,
+        **SUBCLUSTERING_PARAMS,
+    )
+
+
+def _umap_matches(path: Path, expected_rows: int, expected_cols: int) -> bool:
+    if not path.exists():
+        return False
+    data = np.load(path, mmap_mode="r")
+    return data.ndim == 2 and data.shape == (expected_rows, expected_cols)
+
+
+def run_auto_subclustering(
+    cfg: PipelineConfig,
+    clusters_csv_path: Path,
+    source_paths: StagePaths | None,
+    log_path: Path | None = None,
+) -> None:
+    """Subcluster final clusters larger than ``cfg.min_for_subclustering``.
+
+    The step reuses cached DINOv2 artifacts by slicing `images.txt`,
+    `embeddings.dat`, `embeddings.json`, and `sizes.npy` for each large cluster.
+    It also saves the corresponding rows from the parent `umap.npy` as
+    `parent_umap.npy` for traceability, then computes a fresh 60-dimensional
+    subset UMAP and HDBSCAN labels with the fixed subclustering parameters.
+    """
+    if not cfg.subclustering:
+        return
+    if source_paths is None:
+        msg = "[subclustering] Skipped: cached DINOv2 artifacts are unavailable."
+        print(msg)
+        if log_path is not None:
+            _log_timing(log_path, msg)
+        return
+
+    missing = [
+        name
+        for name, path in _required_subclustering_artifacts(source_paths).items()
+        if not path.exists()
+    ]
+    if missing:
+        msg = (
+            "[subclustering] Skipped: missing cached artifacts "
+            + ", ".join(missing)
+            + f" in {source_paths.index_path.parent}"
+        )
+        print(msg)
+        if log_path is not None:
+            _log_timing(log_path, msg)
+        return
+
+    members = _load_cluster_members(clusters_csv_path)
+    oversized = {
+        label: rels
+        for label, rels in members.items()
+        if len(rels) > cfg.min_for_subclustering
+    }
+    if not oversized:
+        msg = (
+            "[subclustering] No clusters exceed "
+            f"{cfg.min_for_subclustering} objects."
+        )
+        print(msg)
+        if log_path is not None:
+            _log_timing(log_path, msg)
+        return
+
+    source_rel_paths = _read_image_index(source_paths.index_path)
+    source_index = {rel: idx for idx, rel in enumerate(source_rel_paths)}
+    summary_rows: list[list[str | int]] = []
+    sub_root = cfg.output_dir / "subclusters"
+    sub_root.mkdir(parents=True, exist_ok=True)
+    print(
+        "[subclustering] Running automatic subclustering for "
+        f"{len(oversized)} cluster(s) larger than {cfg.min_for_subclustering}."
+    )
+    for label in sorted(oversized):
+        subset_rel_paths = oversized[label]
+        missing_rels = [rel for rel in subset_rel_paths if rel not in source_index]
+        if missing_rels:
+            raise ValueError(
+                "Final clusters.csv contains image paths not present in cached "
+                f"{source_paths.index_path}: {missing_rels[:3]}"
+            )
+        subset_indices = [source_index[rel] for rel in subset_rel_paths]
+        sub_dir = sub_root / f"cluster_{label}"
+        sub_paths = stage_paths(sub_dir)
+        sub_cfg = _subclustering_config(cfg, sub_dir)
+        subset_changed = _copy_subset_artifacts(
+            source_paths, sub_paths, subset_indices, subset_rel_paths
+        )
+
+        t0 = time.perf_counter()
+        if cfg.force or subset_changed or not _umap_matches(
+            sub_paths.umap_path, len(subset_rel_paths), sub_cfg.umap_dim
+        ):
+            UMAPReducer(sub_cfg).reduce(
+                sub_paths.emb_path,
+                sub_paths.meta_path,
+                sub_paths.size_path,
+                sub_paths.umap_path,
+            )
+            umap_skipped = False
+        else:
+            umap_skipped = True
+        umap_msg = (
+            f"[subclustering cluster={label}] UMAP reduction: "
+            f"{_format_duration(time.perf_counter() - t0)}"
+            + (" (skipped)" if umap_skipped else "")
+        )
+        print(umap_msg)
+        if log_path is not None:
+            _log_timing(log_path, umap_msg)
+
+        t0 = time.perf_counter()
+        clusterer = HDBSCANClusterer(sub_cfg)
+        result = clusterer.fit(sub_paths.umap_path)
+        hdb_msg = (
+            f"[subclustering cluster={label}] HDBSCAN: "
+            f"{_format_duration(time.perf_counter() - t0)}"
+        )
+        print(hdb_msg)
+        if log_path is not None:
+            _log_timing(log_path, hdb_msg)
+
+        dim_reduction = (
+            np.load(sub_paths.umap_path) if cfg.write_dimreduction_vector else None
+        )
+        clusterer.write_csv(
+            sub_paths.csv_path,
+            subset_rel_paths,
+            result.labels,
+            result.probabilities,
+            result.outlier_scores,
+            result.exemplars,
+            dim_reduction,
+        )
+        summarize_cluster_outputs(sub_paths.csv_path, cfg.classes_benchmark_file)
+        sub_counts = Counter(int(x) for x in result.labels)
+        summary_rows.append(
+            [
+                label,
+                len(subset_rel_paths),
+                len([x for x in sub_counts if x != -1]),
+                str(sub_paths.csv_path),
+            ]
+        )
+
+    summary_path = sub_root / "subclusters_summary.csv"
+    with summary_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            ["parent_cluster", "num_parent_objects", "num_subclusters", "clusters_csv"]
+        )
+        writer.writerows(summary_rows)
+
+
+def _finish_pipeline_run(
+    cfg: PipelineConfig,
+    final_csv: Path,
+    source_paths: StagePaths | None,
+    log_path: Path,
+    total_start: float,
+) -> Path:
+    summarize_cluster_outputs(final_csv, cfg.classes_benchmark_file)
+    run_auto_subclustering(cfg, final_csv, source_paths, log_path)
+    total_dt = time.perf_counter() - total_start
+    total_msg = f"[total] Pipeline runtime: {_format_duration(total_dt)}"
+    print(total_msg)
+    _log_timing(log_path, total_msg)
+    return final_csv
 
 
 def run_stage(
@@ -317,12 +614,7 @@ def run_pipeline(cfg: PipelineConfig) -> Path:
             stage_label="fast",
             log_path=log_path,
         )
-        summarize_cluster_outputs(paths.csv_path, cfg.classes_benchmark_file)
-        total_dt = time.perf_counter() - total_start
-        total_msg = f"[total] Pipeline runtime: {_format_duration(total_dt)}"
-        print(total_msg)
-        _log_timing(log_path, total_msg)
-        return paths.csv_path
+        return _finish_pipeline_run(cfg, paths.csv_path, paths, log_path, total_start)
 
     if cfg.two_pass:
         fast_cfg = make_fast_config(cfg)
@@ -353,12 +645,9 @@ def run_pipeline(cfg: PipelineConfig) -> Path:
                 pass1_result.exemplars,
                 pass1_umap,
             )
-            summarize_cluster_outputs(final_csv, cfg.classes_benchmark_file)
-            total_dt = time.perf_counter() - total_start
-            total_msg = f"[total] Pipeline runtime: {_format_duration(total_dt)}"
-            print(total_msg)
-            _log_timing(log_path, total_msg)
-            return final_csv
+            return _finish_pipeline_run(
+                cfg, final_csv, pass1_paths, log_path, total_start
+            )
 
         subset_paths = [rel_paths[i] for i in uncertain_idx.tolist()]
         pass2_dir = stage_dir(cfg, "pass2")
@@ -389,12 +678,7 @@ def run_pipeline(cfg: PipelineConfig) -> Path:
             merged_result.exemplars,
             merged_umap,
         )
-        summarize_cluster_outputs(final_csv, cfg.classes_benchmark_file)
-        total_dt = time.perf_counter() - total_start
-        total_msg = f"[total] Pipeline runtime: {_format_duration(total_dt)}"
-        print(total_msg)
-        _log_timing(log_path, total_msg)
-        return final_csv
+        return _finish_pipeline_run(cfg, final_csv, pass1_paths, log_path, total_start)
 
     full_dir = stage_dir(cfg, "full")
     paths, _ = run_stage(
@@ -406,12 +690,7 @@ def run_pipeline(cfg: PipelineConfig) -> Path:
         stage_label="full",
         log_path=log_path,
     )
-    summarize_cluster_outputs(paths.csv_path, cfg.classes_benchmark_file)
-    total_dt = time.perf_counter() - total_start
-    total_msg = f"[total] Pipeline runtime: {_format_duration(total_dt)}"
-    print(total_msg)
-    _log_timing(log_path, total_msg)
-    return paths.csv_path
+    return _finish_pipeline_run(cfg, paths.csv_path, paths, log_path, total_start)
 
 
 def run_dimreduction_and_clustering(
@@ -491,12 +770,21 @@ def run_dimreduction_and_clustering(
     print(csv_msg)
     _log_timing(log_path, csv_msg)
 
-    summarize_cluster_outputs(output_paths.csv_path, cfg.classes_benchmark_file)
-    total_dt = time.perf_counter() - total_start
-    total_msg = f"[total] Pipeline runtime: {_format_duration(total_dt)}"
-    print(total_msg)
-    _log_timing(log_path, total_msg)
-    return output_paths.csv_path
+    subclustering_source_paths = StagePaths(
+        index_path=input_paths.index_path,
+        emb_path=input_paths.emb_path,
+        meta_path=input_paths.meta_path,
+        size_path=input_paths.size_path,
+        umap_path=output_paths.umap_path,
+        csv_path=output_paths.csv_path,
+    )
+    return _finish_pipeline_run(
+        cfg,
+        output_paths.csv_path,
+        subclustering_source_paths,
+        log_path,
+        total_start,
+    )
 
 
 def run_clustering_only(cfg: PipelineConfig, log_path: Path, total_start: float) -> Path:
@@ -560,12 +848,24 @@ def run_clustering_only(cfg: PipelineConfig, log_path: Path, total_start: float)
     print(csv_msg)
     _log_timing(log_path, csv_msg)
 
-    summarize_cluster_outputs(output_paths.csv_path, cfg.classes_benchmark_file)
-    total_dt = time.perf_counter() - total_start
-    total_msg = f"[total] Pipeline runtime: {_format_duration(total_dt)}"
-    print(total_msg)
-    _log_timing(log_path, total_msg)
-    return output_paths.csv_path
+    subclustering_source_paths = None
+    if cfg.dino_files is not None:
+        dino_paths = stage_paths(cfg.dino_files)
+        subclustering_source_paths = StagePaths(
+            index_path=dino_paths.index_path,
+            emb_path=dino_paths.emb_path,
+            meta_path=dino_paths.meta_path,
+            size_path=dino_paths.size_path,
+            umap_path=input_paths.umap_path,
+            csv_path=output_paths.csv_path,
+        )
+    return _finish_pipeline_run(
+        cfg,
+        output_paths.csv_path,
+        subclustering_source_paths,
+        log_path,
+        total_start,
+    )
 
 
 def clustering(

@@ -138,6 +138,28 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
         dest="write_dimreduction_vector",
         action="store_false",
     )
+    subclustering = parser.add_mutually_exclusive_group()
+    subclustering.add_argument(
+        "--subclustering",
+        dest="subclustering",
+        action="store_true",
+        default=None,
+        help=(
+            "Run automatic post-pipeline subclustering for clusters larger than "
+            "--min-for-subclustering. Default: enabled."
+        ),
+    )
+    subclustering.add_argument(
+        "--no-subclustering",
+        dest="subclustering",
+        action="store_false",
+        help="Skip automatic post-pipeline subclustering.",
+    )
+    parser.add_argument(
+        "--min-for-subclustering",
+        type=int,
+        help="Minimum cluster size that triggers automatic subclustering. Default: 1000.",
+    )
     parser.add_argument("--torch-threads", type=int)
     parser.add_argument("--force", action="store_true", default=None)
     parser.add_argument(

@@ -54,6 +54,13 @@ hdb_min_samples: 10
 # Write the UMAP vector to the dim_reduction column in clusters.csv.
 write_dimreduction_vector: true
 
+# Automatically subcluster any final cluster with more than this many objects.
+# The post-pipeline subclustering step reuses cached DINOv2 artifacts and runs
+# subset UMAP/HDBSCAN with umap_dim=60, umap_neighbors=30,
+# hdbscan_min_cluster_size=7, and hdb_min_samples=6.
+subclustering: true
+min_for_subclustering: 1000
+
 # Enable the two-pass pipeline that refines uncertain samples.
 # If false, a single pass is run.
 two_pass: false

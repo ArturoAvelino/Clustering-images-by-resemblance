@@ -8,6 +8,8 @@ What it does
 1) Extracts DINOv2 embeddings for each image (default: 768‑dim with dinov2_vitb14).
 2) Reduces dimensionality with UMAP to preserve local neighborhoods.
 3) Clusters with HDBSCAN and writes a CSV of image_id → cluster label.
+4) By default, subclusters any final cluster with more than 1000 objects by
+   slicing cached DINOv2 artifacts and running subset UMAP/HDBSCAN.
 
 Inputs
 ------
@@ -38,6 +40,9 @@ Outputs
 - embeddings.dat / embeddings.json: saved embedding matrix + metadata.
 - umap.npy: reduced vectors used for clustering.
 - images.txt: stable list of image paths used for the run.
+- subclusters/cluster_<label>/: automatic subclustering outputs for oversized
+  final clusters, including subset cached artifacts, parent_umap.npy, a fresh
+  umap.npy, clusters.csv, and summaries.
 
 How to use (CLI)
 ---------------
@@ -89,6 +94,9 @@ Optional modes
 - --no-autocrop: disable auto-crop to non-white pixels.
 - --compute only-dimreduction-and-clustering: skip embedding and reuse DINOv2 outputs.
 - --compute only-clustering: skip embedding and UMAP, reuse cached UMAP outputs.
+- --no-subclustering: skip automatic post-pipeline subclustering.
+- --min-for-subclustering: minimum final cluster size that triggers subclustering
+  (default: 1000).
 
 How to use (Python)
 -------------------
