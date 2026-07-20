@@ -31,14 +31,6 @@ def summarize_cluster_outputs(clusters_csv_path: Path, benchmark_path: Path | No
     summarize_cluster_dominant_classes_and_diff_csv(summary_classes_path)
 
 
-SUBCLUSTERING_PARAMS = {
-    "umap_dim": 60,
-    "hdbscan_min_cluster_size": 7,
-    "hdb_min_samples": 6,
-    "umap_neighbors": 30,
-}
-
-
 def stage_dir(cfg: PipelineConfig, stage: str) -> Path:
     if cfg.two_pass or cfg.fast_tune:
         return cfg.output_dir / "stages" / stage
@@ -177,7 +169,7 @@ def _copy_subset_artifacts(
 
 
 def _subclustering_config(cfg: PipelineConfig, output_dir: Path) -> PipelineConfig:
-    """Return a config for the fixed automatic subclustering parameters."""
+    """Return a config using the automatic subclustering parameters."""
     return replace(
         cfg,
         output_dir=output_dir,
@@ -186,7 +178,25 @@ def _subclustering_config(cfg: PipelineConfig, output_dir: Path) -> PipelineConf
         fast_tune=False,
         max_images=None,
         subclustering=False,
-        **SUBCLUSTERING_PARAMS,
+        merge_noise_subclusters=False,
+        umap_dim=cfg.subclustering_umap_dim,
+        umap_neighbors=cfg.subclustering_umap_neighbors,
+        hdbscan_min_cluster_size=cfg.subclustering_hdbscan_min_cluster_size,
+        hdb_min_samples=cfg.subclustering_hdb_min_samples,
+        hdb_cluster_selection_method=(
+            cfg.subclustering_hdb_cluster_selection_method
+            or cfg.hdb_cluster_selection_method
+        ),
+        hdb_cluster_selection_epsilon=(
+            cfg.subclustering_hdb_cluster_selection_epsilon
+            if cfg.subclustering_hdb_cluster_selection_epsilon is not None
+            else cfg.hdb_cluster_selection_epsilon
+        ),
+        hdb_allow_single_cluster=(
+            cfg.subclustering_hdb_allow_single_cluster
+            if cfg.subclustering_hdb_allow_single_cluster is not None
+            else cfg.hdb_allow_single_cluster
+        ),
     )
 
 
@@ -202,23 +212,28 @@ def run_auto_subclustering(
     clusters_csv_path: Path,
     source_paths: StagePaths | None,
     log_path: Path | None = None,
-) -> None:
+) -> bool:
     """Subcluster final clusters larger than ``cfg.min_for_subclustering``.
 
     The step reuses cached DINOv2 artifacts by slicing `images.txt`,
     `embeddings.dat`, `embeddings.json`, and `sizes.npy` for each large cluster.
     It also saves the corresponding rows from the parent `umap.npy` as
-    `parent_umap.npy` for traceability, then computes a fresh 60-dimensional
-    subset UMAP and HDBSCAN labels with the fixed subclustering parameters.
+    `parent_umap.npy` for traceability, then computes a fresh subset UMAP and
+    HDBSCAN labels using the configurable subclustering parameters.
+
+    When ``cfg.merge_noise_subclusters`` is true, non-noise subclusters created
+    from parent cluster ``-1`` are remapped into fresh top-level cluster IDs in
+    ``clusters_csv_path``. The rewritten CSV keeps row order and adds
+    ``parent_cluster`` and ``subcluster`` traceability columns.
     """
     if not cfg.subclustering:
-        return
+        return False
     if source_paths is None:
         msg = "[subclustering] Skipped: cached DINOv2 artifacts are unavailable."
         print(msg)
         if log_path is not None:
             _log_timing(log_path, msg)
-        return
+        return False
 
     missing = [
         name
@@ -234,7 +249,7 @@ def run_auto_subclustering(
         print(msg)
         if log_path is not None:
             _log_timing(log_path, msg)
-        return
+        return False
 
     members = _load_cluster_members(clusters_csv_path)
     oversized = {
@@ -250,11 +265,12 @@ def run_auto_subclustering(
         print(msg)
         if log_path is not None:
             _log_timing(log_path, msg)
-        return
+        return False
 
     source_rel_paths = _read_image_index(source_paths.index_path)
     source_index = {rel: idx for idx, rel in enumerate(source_rel_paths)}
     summary_rows: list[list[str | int]] = []
+    noise_subcluster_csv: Path | None = None
     sub_root = cfg.output_dir / "subclusters"
     sub_root.mkdir(parents=True, exist_ok=True)
     print(
@@ -324,11 +340,15 @@ def run_auto_subclustering(
         )
         summarize_cluster_outputs(sub_paths.csv_path, cfg.classes_benchmark_file)
         sub_counts = Counter(int(x) for x in result.labels)
+        sub_noise = int(sub_counts.get(-1, 0))
+        if label == -1:
+            noise_subcluster_csv = sub_paths.csv_path
         summary_rows.append(
             [
                 label,
                 len(subset_rel_paths),
                 len([x for x in sub_counts if x != -1]),
+                sub_noise,
                 str(sub_paths.csv_path),
             ]
         )
@@ -337,9 +357,85 @@ def run_auto_subclustering(
     with summary_path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(
-            ["parent_cluster", "num_parent_objects", "num_subclusters", "clusters_csv"]
+            [
+                "parent_cluster",
+                "num_parent_objects",
+                "num_subclusters",
+                "num_noise_in_subclusters",
+                "clusters_csv",
+            ]
         )
         writer.writerows(summary_rows)
+    if cfg.merge_noise_subclusters and noise_subcluster_csv is not None:
+        return _merge_noise_subclusters_into_csv(clusters_csv_path, noise_subcluster_csv)
+    return False
+
+
+def _merge_noise_subclusters_into_csv(
+    clusters_csv_path: Path, noise_subcluster_csv: Path
+) -> bool:
+    """Merge non-noise labels from parent noise subclustering into final CSV."""
+    with clusters_csv_path.open("r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        if reader.fieldnames is None:
+            raise ValueError(f"{clusters_csv_path} has no header row")
+        fieldnames = list(reader.fieldnames)
+        rows = list(reader)
+    if not rows:
+        return False
+
+    max_label = max(int(float(row["cluster"])) for row in rows)
+    next_label = max_label + 1 if max_label >= 0 else 0
+
+    with noise_subcluster_csv.open("r", encoding="utf-8", newline="") as f:
+        sub_reader = csv.DictReader(f)
+        if sub_reader.fieldnames is None:
+            raise ValueError(f"{noise_subcluster_csv} has no header row")
+        sub_rows = {row["image_id"]: row for row in sub_reader}
+
+    sub_label_map: dict[int, int] = {}
+    for sub_row in sub_rows.values():
+        sub_label = int(float(sub_row["cluster"]))
+        if sub_label == -1 or sub_label in sub_label_map:
+            continue
+        sub_label_map[sub_label] = next_label
+        next_label += 1
+    if not sub_label_map:
+        return False
+
+    for extra in ["parent_cluster", "subcluster"]:
+        if extra not in fieldnames:
+            fieldnames.append(extra)
+
+    changed = False
+    for row in rows:
+        row.setdefault("parent_cluster", "")
+        row.setdefault("subcluster", "")
+        if int(float(row["cluster"])) != -1:
+            continue
+        sub_row = sub_rows.get(row["image_id"])
+        if sub_row is None:
+            continue
+        sub_label = int(float(sub_row["cluster"]))
+        row["parent_cluster"] = "-1"
+        row["subcluster"] = str(sub_label)
+        if sub_label == -1:
+            continue
+        row["cluster"] = str(sub_label_map[sub_label])
+        for key in ["probabilities", "outlier_scores", "dim_reduction"]:
+            if key in row and key in sub_row:
+                row[key] = sub_row[key]
+        changed = True
+    if not changed:
+        return False
+
+    tmp_path = clusters_csv_path.with_suffix(clusters_csv_path.suffix + ".tmp")
+    with tmp_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+    tmp_path.replace(clusters_csv_path)
+    return True
 
 
 def _finish_pipeline_run(
@@ -350,7 +446,12 @@ def _finish_pipeline_run(
     total_start: float,
 ) -> Path:
     summarize_cluster_outputs(final_csv, cfg.classes_benchmark_file)
-    run_auto_subclustering(cfg, final_csv, source_paths, log_path)
+    merged = run_auto_subclustering(cfg, final_csv, source_paths, log_path)
+    if merged:
+        msg = "[subclustering] Merged non-noise subclusters from parent cluster -1."
+        print(msg)
+        _log_timing(log_path, msg)
+        summarize_cluster_outputs(final_csv, cfg.classes_benchmark_file)
     total_dt = time.perf_counter() - total_start
     total_msg = f"[total] Pipeline runtime: {_format_duration(total_dt)}"
     print(total_msg)

@@ -9,7 +9,9 @@ What it does
 2) Reduces dimensionality with UMAP to preserve local neighborhoods.
 3) Clusters with HDBSCAN and writes a CSV of image_id → cluster label.
 4) By default, subclusters any final cluster with more than 1000 objects by
-   slicing cached DINOv2 artifacts and running subset UMAP/HDBSCAN.
+   slicing cached DINOv2 artifacts and running subset UMAP/HDBSCAN. Subclustering
+   UMAP/HDBSCAN settings are configurable, and noise subclusters can optionally
+   be merged back into the top-level clusters.csv.
 
 Inputs
 ------
@@ -22,7 +24,9 @@ Outputs
 -------
 - clusters.csv: columns [image_id, cluster, labeled, probabilities, outlier_scores, dim_reduction]
   (`labeled` is true only for basenames ending with `_class_1234.jpg`; noise is labeled as -1;
-  dim_reduction is a JSON array unless write_dimreduction_vector is false).
+  dim_reduction is a JSON array unless write_dimreduction_vector is false). When
+  merge_noise_subclusters is true, parent_cluster and subcluster traceability
+  columns are added for recovered parent-noise rows.
 - clusters_summary.csv: columns [cluster_id, num_objs_in_cluster, num_classes_in_cluster].
 - classes_in_dataset.csv: columns [class_ID, num_objs] by default, or
   [class_ID, class_name, num_objs] when generated with
@@ -73,6 +77,15 @@ umap_min_dist: 0.0
 umap_metric: "cosine"
 hdbscan_min_cluster_size: 25
 hdb_min_samples: 10
+hdb_cluster_selection_method: "eom"
+hdb_cluster_selection_epsilon: 0.0
+hdb_allow_single_cluster: false
+subclustering: true
+subclustering_umap_dim: 60
+subclustering_umap_neighbors: 30
+subclustering_hdbscan_min_cluster_size: 7
+subclustering_hdb_min_samples: 6
+merge_noise_subclusters: false
 two_pass: true
 refine_prob_threshold: 0.7
 refine_include_noise: true
@@ -97,6 +110,8 @@ Optional modes
 - --no-subclustering: skip automatic post-pipeline subclustering.
 - --min-for-subclustering: minimum final cluster size that triggers subclustering
   (default: 1000).
+- --merge-noise-subclusters: remap non-noise subclusters found inside parent
+  cluster -1 into fresh top-level cluster IDs.
 
 How to use (Python)
 -------------------

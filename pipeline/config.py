@@ -39,11 +39,14 @@ class PipelineConfig:
     hdbscan_min_cluster_size: int = 25
     hdb_min_samples: int = 10
     hdb_metric: str = "euclidean"
+    hdb_cluster_selection_method: str = "eom"
+    hdb_cluster_selection_epsilon: float = 0.0
+    hdb_allow_single_cluster: bool = False
     autocrop: bool = False
     autocrop_threshold: int = 35
     autocrop_padding: int = 2
     background_color: tuple[int, int, int] = (45, 71, 159)
-    size_feature_weight: float = 4.0
+    size_feature_weight: float = 0.0
     image_size_in_kbytes_min: Optional[float] = None
     image_size_in_kbytes_max: Optional[float] = None
     two_pass: bool = False
@@ -62,6 +65,14 @@ class PipelineConfig:
     classes_benchmark_file: Optional[Path] = None
     subclustering: bool = True
     min_for_subclustering: int = 1000
+    subclustering_umap_dim: int = 60
+    subclustering_umap_neighbors: int = 30
+    subclustering_hdbscan_min_cluster_size: int = 7
+    subclustering_hdb_min_samples: int = 6
+    subclustering_hdb_cluster_selection_method: Optional[str] = None
+    subclustering_hdb_cluster_selection_epsilon: Optional[float] = None
+    subclustering_hdb_allow_single_cluster: Optional[bool] = None
+    merge_noise_subclusters: bool = False
 
 
 @dataclass
@@ -149,6 +160,9 @@ def build_config(args) -> PipelineConfig:
         "hdbscan_min_cluster_size": args.hdbscan_min_cluster_size,
         "hdb_min_samples": args.hdb_min_samples,
         "hdb_metric": args.hdb_metric,
+        "hdb_cluster_selection_method": args.hdb_cluster_selection_method,
+        "hdb_cluster_selection_epsilon": args.hdb_cluster_selection_epsilon,
+        "hdb_allow_single_cluster": args.hdb_allow_single_cluster,
         "autocrop": args.autocrop,
         "autocrop_threshold": args.autocrop_threshold,
         "autocrop_padding": args.autocrop_padding,
@@ -170,6 +184,22 @@ def build_config(args) -> PipelineConfig:
         "classes_benchmark_file": getattr(args, "classes_benchmark_file", None),
         "subclustering": getattr(args, "subclustering", None),
         "min_for_subclustering": getattr(args, "min_for_subclustering", None),
+        "subclustering_umap_dim": getattr(args, "subclustering_umap_dim", None),
+        "subclustering_umap_neighbors": getattr(args, "subclustering_umap_neighbors", None),
+        "subclustering_hdbscan_min_cluster_size": getattr(
+            args, "subclustering_hdbscan_min_cluster_size", None
+        ),
+        "subclustering_hdb_min_samples": getattr(args, "subclustering_hdb_min_samples", None),
+        "subclustering_hdb_cluster_selection_method": getattr(
+            args, "subclustering_hdb_cluster_selection_method", None
+        ),
+        "subclustering_hdb_cluster_selection_epsilon": getattr(
+            args, "subclustering_hdb_cluster_selection_epsilon", None
+        ),
+        "subclustering_hdb_allow_single_cluster": getattr(
+            args, "subclustering_hdb_allow_single_cluster", None
+        ),
+        "merge_noise_subclusters": getattr(args, "merge_noise_subclusters", None),
     }
     for key, value in overrides.items():
         if value is not None:
@@ -244,6 +274,10 @@ def validate_config(cfg: PipelineConfig) -> None:
         errors.append("hdbscan_min_cluster_size must be >= 2")
     if cfg.hdb_min_samples is not None and cfg.hdb_min_samples < 1:
         errors.append("hdb_min_samples must be >= 1")
+    if cfg.hdb_cluster_selection_method not in {"eom", "leaf"}:
+        errors.append("hdb_cluster_selection_method must be 'eom' or 'leaf'")
+    if cfg.hdb_cluster_selection_epsilon < 0:
+        errors.append("hdb_cluster_selection_epsilon must be >= 0")
     if cfg.autocrop_threshold < 0:
         errors.append("autocrop_threshold must be >= 0")
     if cfg.autocrop_padding < 0:
@@ -284,6 +318,24 @@ def validate_config(cfg: PipelineConfig) -> None:
         errors.append("two_pass and fast_tune cannot both be true")
     if cfg.min_for_subclustering < 1:
         errors.append("min_for_subclustering must be >= 1")
+    if cfg.subclustering_umap_dim <= 1:
+        errors.append("subclustering_umap_dim must be > 1")
+    if cfg.subclustering_umap_neighbors <= 2:
+        errors.append("subclustering_umap_neighbors must be > 2")
+    if cfg.subclustering_hdbscan_min_cluster_size < 2:
+        errors.append("subclustering_hdbscan_min_cluster_size must be >= 2")
+    if cfg.subclustering_hdb_min_samples is not None and cfg.subclustering_hdb_min_samples < 1:
+        errors.append("subclustering_hdb_min_samples must be >= 1")
+    if (
+        cfg.subclustering_hdb_cluster_selection_method is not None
+        and cfg.subclustering_hdb_cluster_selection_method not in {"eom", "leaf"}
+    ):
+        errors.append("subclustering_hdb_cluster_selection_method must be 'eom' or 'leaf'")
+    if (
+        cfg.subclustering_hdb_cluster_selection_epsilon is not None
+        and cfg.subclustering_hdb_cluster_selection_epsilon < 0
+    ):
+        errors.append("subclustering_hdb_cluster_selection_epsilon must be >= 0")
     if errors:
         msg = "Invalid configuration:\n  - " + "\n  - ".join(errors)
         raise ValueError(msg)

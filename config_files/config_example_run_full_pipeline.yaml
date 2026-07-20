@@ -51,15 +51,40 @@ hdbscan_min_cluster_size: 25
 # HDBSCAN minimum samples (higher values produce more conservative clusters).
 hdb_min_samples: 10
 
+# HDBSCAN cluster-selection behavior.
+# eom is the default; leaf usually creates finer clusters and can increase noise.
+hdb_cluster_selection_method: "eom"
+
+# Merge nearby HDBSCAN clusters above this distance in the condensed tree.
+# Keep at 0.0 unless you intentionally want fewer, broader clusters.
+hdb_cluster_selection_epsilon: 0.0
+
+# Allow HDBSCAN to return one non-noise cluster when the data supports it.
+hdb_allow_single_cluster: false
+
 # Write the UMAP vector to the dim_reduction column in clusters.csv.
 write_dimreduction_vector: true
 
 # Automatically subcluster any final cluster with more than this many objects.
-# The post-pipeline subclustering step reuses cached DINOv2 artifacts and runs
-# subset UMAP/HDBSCAN with umap_dim=60, umap_neighbors=30,
-# hdbscan_min_cluster_size=7, and hdb_min_samples=6.
 subclustering: true
 min_for_subclustering: 1000
+
+# Subclustering UMAP/HDBSCAN settings. These defaults preserve the previous
+# built-in behavior.
+subclustering_umap_dim: 60
+subclustering_umap_neighbors: 30
+subclustering_hdbscan_min_cluster_size: 7
+subclustering_hdb_min_samples: 6
+
+# Optional subclustering HDBSCAN overrides. If omitted/null, subclustering uses
+# the main HDBSCAN cluster-selection method, epsilon, and allow-single setting.
+subclustering_hdb_cluster_selection_method:
+subclustering_hdb_cluster_selection_epsilon:
+subclustering_hdb_allow_single_cluster:
+
+# If true, non-noise subclusters created from parent cluster -1 are remapped
+# into new top-level cluster IDs in clusters.csv.
+merge_noise_subclusters: false
 
 # Enable the two-pass pipeline that refines uncertain samples.
 # If false, a single pass is run.

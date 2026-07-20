@@ -37,8 +37,25 @@ hdb_min_samples: 10
 # HDBSCAN distance metric.
 hdb_metric: "euclidean"
 
+# HDBSCAN cluster-selection behavior.
+hdb_cluster_selection_method: "eom"
+hdb_cluster_selection_epsilon: 0.0
+hdb_allow_single_cluster: false
+
 # Write the UMAP vector to the dim_reduction column in clusters.csv.
 write_dimreduction_vector: true
+
+# Automatic subclustering settings.
+subclustering: true
+min_for_subclustering: 1000
+subclustering_umap_dim: 60
+subclustering_umap_neighbors: 30
+subclustering_hdbscan_min_cluster_size: 7
+subclustering_hdb_min_samples: 6
+subclustering_hdb_cluster_selection_method:
+subclustering_hdb_cluster_selection_epsilon:
+subclustering_hdb_allow_single_cluster:
+merge_noise_subclusters: false
 
 # These refinement settings are accepted in every config file so the same schema
 # can be reused across run modes. They only affect full runs with two_pass: true.

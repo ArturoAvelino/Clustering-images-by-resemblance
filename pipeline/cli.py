@@ -77,6 +77,30 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
     parser.add_argument("--hdb-min-cluster-size", dest="hdbscan_min_cluster_size", type=int)
     parser.add_argument("--hdb-min-samples", type=int)
     parser.add_argument("--hdb-metric")
+    parser.add_argument(
+        "--hdb-cluster-selection-method",
+        choices=["eom", "leaf"],
+        help="HDBSCAN cluster selection method. Default: eom.",
+    )
+    parser.add_argument(
+        "--hdb-cluster-selection-epsilon",
+        type=float,
+        help="HDBSCAN cluster_selection_epsilon; larger values merge nearby clusters.",
+    )
+    hdb_single = parser.add_mutually_exclusive_group()
+    hdb_single.add_argument(
+        "--hdb-allow-single-cluster",
+        dest="hdb_allow_single_cluster",
+        action="store_true",
+        default=None,
+        help="Allow HDBSCAN to return a single non-noise cluster.",
+    )
+    hdb_single.add_argument(
+        "--no-hdb-allow-single-cluster",
+        dest="hdb_allow_single_cluster",
+        action="store_false",
+        help="Disallow single-cluster HDBSCAN results. Default.",
+    )
     autocrop = parser.add_mutually_exclusive_group()
     autocrop.add_argument("--autocrop", dest="autocrop", action="store_true", default=None)
     autocrop.add_argument("--no-autocrop", dest="autocrop", action="store_false")
@@ -159,6 +183,76 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
         "--min-for-subclustering",
         type=int,
         help="Minimum cluster size that triggers automatic subclustering. Default: 1000.",
+    )
+    parser.add_argument(
+        "--subclustering-umap-dim",
+        type=int,
+        help="UMAP dimensionality used for automatic subclustering. Default: 60.",
+    )
+    parser.add_argument(
+        "--subclustering-umap-neighbors",
+        type=int,
+        help="UMAP n_neighbors used for automatic subclustering. Default: 30.",
+    )
+    parser.add_argument(
+        "--subclustering-hdbscan-min-cluster-size",
+        type=int,
+        help="HDBSCAN min_cluster_size used for automatic subclustering. Default: 7.",
+    )
+    parser.add_argument(
+        "--subclustering-hdb-min-samples",
+        type=int,
+        help="HDBSCAN min_samples used for automatic subclustering. Default: 6.",
+    )
+    parser.add_argument(
+        "--subclustering-hdb-cluster-selection-method",
+        choices=["eom", "leaf"],
+        help=(
+            "HDBSCAN cluster selection method used for subclustering. "
+            "Defaults to the main HDBSCAN method."
+        ),
+    )
+    parser.add_argument(
+        "--subclustering-hdb-cluster-selection-epsilon",
+        type=float,
+        help=(
+            "HDBSCAN cluster_selection_epsilon used for subclustering. "
+            "Defaults to the main HDBSCAN epsilon."
+        ),
+    )
+    sub_hdb_single = parser.add_mutually_exclusive_group()
+    sub_hdb_single.add_argument(
+        "--subclustering-hdb-allow-single-cluster",
+        dest="subclustering_hdb_allow_single_cluster",
+        action="store_true",
+        default=None,
+        help=(
+            "Allow HDBSCAN to return one non-noise cluster during automatic "
+            "subclustering. Defaults to the main HDBSCAN setting."
+        ),
+    )
+    sub_hdb_single.add_argument(
+        "--no-subclustering-hdb-allow-single-cluster",
+        dest="subclustering_hdb_allow_single_cluster",
+        action="store_false",
+        help="Disallow single-cluster HDBSCAN results during automatic subclustering.",
+    )
+    merge_noise = parser.add_mutually_exclusive_group()
+    merge_noise.add_argument(
+        "--merge-noise-subclusters",
+        dest="merge_noise_subclusters",
+        action="store_true",
+        default=None,
+        help=(
+            "After automatic subclustering, remap non-noise subclusters from "
+            "parent cluster -1 into new top-level cluster IDs."
+        ),
+    )
+    merge_noise.add_argument(
+        "--no-merge-noise-subclusters",
+        dest="merge_noise_subclusters",
+        action="store_false",
+        help="Keep noise subclusters only in subclusters/cluster_-1/. Default.",
     )
     parser.add_argument("--torch-threads", type=int)
     parser.add_argument("--force", action="store_true", default=None)

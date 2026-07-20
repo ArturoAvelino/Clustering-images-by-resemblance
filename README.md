@@ -12,9 +12,11 @@ Artifacts are written to the output directory, including embeddings, reduced vec
 
 After the main run finishes, automatic subclustering is enabled by default. Any
 final cluster with more than 1000 objects is processed again as its own subset,
-using the cached DINOv2 artifacts from the main run and fixed subclustering
-settings (`umap_dim=60`, `umap_neighbors=30`, `hdbscan_min_cluster_size=7`,
-`hdb_min_samples=6`).
+using the cached DINOv2 artifacts from the main run and configurable
+subclustering settings. By default, subclustering uses `umap_dim=60`,
+`umap_neighbors=30`, `hdbscan_min_cluster_size=7`, and `hdb_min_samples=6`.
+When `merge_noise_subclusters: true`, non-noise subclusters found inside parent
+cluster `-1` are remapped into fresh top-level cluster IDs in `clusters.csv`.
 
 ## Requirements
 
@@ -141,6 +143,16 @@ python clustering compute-clusters \
   --input-dir /path/to/images \
   --output-dir /path/to/output \
   --min-for-subclustering 2000
+```
+
+Merge non-noise subclusters found inside the parent noise cluster (`-1`) back
+into the top-level `clusters.csv`:
+
+```bash
+python clustering compute-clusters \
+  --input-dir /path/to/images \
+  --output-dir /path/to/output \
+  --merge-noise-subclusters
 ```
 
 Show help for the clustering pipeline options:
@@ -523,16 +535,23 @@ most important fields are:
 - `umap_metric` (default `cosine`)
 - `hdbscan_min_cluster_size`
 - `hdb_min_samples` (default `10`)
+- `hdb_cluster_selection_method` (default `eom`; allowed values: `eom`, `leaf`)
+- `hdb_cluster_selection_epsilon` (default `0.0`; larger values merge nearby HDBSCAN clusters)
+- `hdb_allow_single_cluster` (default `false`)
 - `write_dimreduction_vector` (default `true`, writes the UMAP vector to `clusters.csv`)
 - `two_pass` or `fast_tune` (recommended: `false`)
 - `refine_prob_threshold` (default `0.7`; used only when `two_pass: true`)
 - `refine_include_noise` (default `true`; used only when `two_pass: true`)
 - `subclustering` (default `true`; runs automatic post-pipeline subclustering)
 - `min_for_subclustering` (default `1000`; clusters must be larger than this value)
+- `subclustering_umap_dim` / `subclustering_umap_neighbors`
+- `subclustering_hdbscan_min_cluster_size` / `subclustering_hdb_min_samples`
+- `subclustering_hdb_cluster_selection_method`, `subclustering_hdb_cluster_selection_epsilon`, and `subclustering_hdb_allow_single_cluster` (optional overrides; when omitted, subclustering uses the main HDBSCAN selection settings)
+- `merge_noise_subclusters` (default `false`; remaps non-noise subclusters found inside parent cluster `-1` into top-level cluster IDs)
 - `autocrop` (default: `false`)
 - `background_color` (RGB background color as `[R, G, B]`; default is tuned for blue)
 - `autocrop_threshold` (color-distance threshold used to separate background from foreground)
-- `size_feature_weight` (higher values emphasize size)
+- `size_feature_weight` (default `0.0`; higher values emphasize size)
 - `image_size_in_kbytes_min` / `image_size_in_kbytes_max` (optional file-size filter; KB = 1024 bytes)
 - `compute` (use `only-dimreduction-and-clustering` to skip embedding, or `only-clustering` to skip embedding + UMAP)
 - `dino_files` (directory containing embeddings.dat, embeddings.json, sizes.npy, and images.txt)
@@ -582,6 +601,17 @@ the DINOv2 embedding vectors; HDBSCAN operates on the UMAP-reduced vectors.
   is standard in low-dimensional UMAP spaces. Only change this if you have a
   specific reason and can explain how distances should behave in the reduced
   space.
+- `hdb_cluster_selection_method`: HDBSCAN cluster selection method. `eom` is
+  the default and usually gives broader, more stable clusters. `leaf` can expose
+  finer-grained clusters but often increases the number of points labeled as
+  noise.
+- `hdb_cluster_selection_epsilon`: Distance threshold for merging nearby
+  clusters in HDBSCAN's condensed tree. Keep this at `0.0` by default. Small
+  values such as `0.05-0.1` can reduce noise by merging nearby clusters, but
+  larger values can over-merge visually distinct groups.
+- `hdb_allow_single_cluster`: Allows HDBSCAN to return a single non-noise
+  cluster when the density tree supports it. Leave this `false` for normal
+  discovery runs unless you expect one dominant group.
 
 Size filtering is applied when `images.txt` is generated. If you change the size
 range after a run, delete `images.txt` or rerun with `--force` to rebuild it.
@@ -604,21 +634,42 @@ summarized unless `--no-subclustering` or `subclustering: false` is set. It
 checks every final cluster label, including noise label `-1`, and selects labels
 whose object count is greater than `min_for_subclustering`.
 
+Subclustering has its own configurable UMAP and HDBSCAN parameters:
+
+- `subclustering_umap_dim` (default `60`)
+- `subclustering_umap_neighbors` (default `30`)
+- `subclustering_hdbscan_min_cluster_size` (default `7`)
+- `subclustering_hdb_min_samples` (default `6`)
+- `subclustering_hdb_cluster_selection_method` (optional; defaults to the main `hdb_cluster_selection_method`)
+- `subclustering_hdb_cluster_selection_epsilon` (optional; defaults to the main `hdb_cluster_selection_epsilon`)
+- `subclustering_hdb_allow_single_cluster` (optional; defaults to the main `hdb_allow_single_cluster`)
+
 For each selected parent cluster, the pipeline creates
 `output_dir/subclusters/cluster_<label>/` and writes:
 
 - subset `images.txt`
 - subset `embeddings.dat`, `embeddings.json`, and `sizes.npy` copied from the cached parent DINOv2 outputs
 - `parent_umap.npy`, containing the selected rows from the parent UMAP output for traceability
-- a fresh subset `umap.npy` computed with `umap_dim=60` and `umap_neighbors=30`
-- subset `clusters.csv` computed with `hdbscan_min_cluster_size=7` and `hdb_min_samples=6`
+- a fresh subset `umap.npy` computed with the subclustering UMAP settings
+- subset `clusters.csv` computed with the subclustering HDBSCAN settings
 - the usual summary CSV files for that subset
 
 The step does not re-run DINOv2 embedding. It slices the cached embedding matrix
 and size array, then runs only the subset UMAP and HDBSCAN stages needed for the
 large parent cluster. A top-level `output_dir/subclusters/subclusters_summary.csv`
-lists each parent cluster that was subclustered and the path to its subset
-`clusters.csv`.
+lists each parent cluster that was subclustered, the number of non-noise
+subclusters, the number of subset images still labeled as noise, and the path to
+its subset `clusters.csv`.
+
+When `merge_noise_subclusters: true`, the pipeline uses
+`subclusters/cluster_-1/clusters.csv` to rewrite the top-level `clusters.csv`.
+Every non-noise subcluster found inside parent cluster `-1` is assigned a fresh
+top-level cluster ID after the current maximum cluster ID. Rows merged this way
+receive `parent_cluster=-1` and `subcluster=<subset label>` traceability columns,
+and their HDBSCAN probability/outlier metadata is copied from the subclustering
+run. Any images that remain `-1` in `subclusters/cluster_-1/clusters.csv` stay
+`-1` in the top-level output. After merging, all summary CSV files are regenerated
+from the rewritten top-level `clusters.csv`.
 
 ## Python API
 
@@ -656,7 +707,9 @@ The output directory contains:
   in which case the column is empty). `labeled` is `True` only when the basename in
   `image_id` ends exactly with `_class_1234.jpg`, meaning `_class_` appears immediately
   before a 4-digit class value and that value is immediately followed by the `.jpg`
-  extension. Otherwise `labeled` is `False`.
+  extension. Otherwise `labeled` is `False`. When `merge_noise_subclusters: true`,
+  the file also includes `parent_cluster` and `subcluster` columns for rows that
+  were recovered from parent cluster `-1`.
 - `clusters_summary.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster]`
 - `classes_in_dataset.csv` with columns `[class_ID, num_objs]` by default, or `[class_ID, class_name, num_objs]` when `python count-classes-on-labeled-filenames ... --biigleID-to-names-file /path/to/labels.csv` is used after recursively scanning the labeled image directory
 - `clusters_summary_classes.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster, class_X, class_X_%_of_the_cluster, ...]` — one row per cluster, one set of columns per valid class found across the dataset. A class is recognized only when the basename ends with `_class_1234.jpg`; non-matching filenames still contribute to `num_objs_in_cluster` but are excluded from class-derived columns. Add `class_X_%_of_total_class` columns by supplying `--classes-benchmark-file`.
