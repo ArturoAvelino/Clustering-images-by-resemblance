@@ -47,6 +47,9 @@ subclustering_hdb_min_samples: 6
 subclustering_hdb_cluster_selection_method:
 subclustering_hdb_cluster_selection_epsilon:
 subclustering_hdb_allow_single_cluster:
+
+# If true, non-noise subclusters created from parent cluster -1 are remapped
+# into new top-level cluster IDs in clusters.csv.
 merge_noise_subclusters: false
 
 # These refinement settings are accepted in every config file so the same schema
