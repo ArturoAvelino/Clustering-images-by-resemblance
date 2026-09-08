@@ -28,6 +28,10 @@ Outputs
   merge_noise_subclusters is true, parent_cluster and subcluster traceability
   columns are added for recovered parent-noise rows.
 - clusters_summary.csv: columns [cluster_id, num_objs_in_cluster, num_classes_in_cluster].
+- richness.csv: one row per location prefix (the part of image_id before
+  `_r<digits>c<digits>`), with per-cluster image counts and the number of
+  represented clusters in the `richness` column. The top-level run and every
+  generated subclusters/cluster_<label>/ directory receive this file.
 - classes_in_dataset.csv: columns [class_ID, num_objs] by default, or
   [class_ID, class_name, num_objs] when generated with
   `python count-classes-on-labeled-filenames --biigleID-to-names-file ...`.
@@ -46,7 +50,7 @@ Outputs
 - images.txt: stable list of image paths used for the run.
 - subclusters/cluster_<label>/: automatic subclustering outputs for oversized
   final clusters, including subset cached artifacts, parent_umap.npy, a fresh
-  umap.npy, clusters.csv, and summaries.
+  umap.npy, clusters.csv, richness.csv, and summaries.
 
 How to use (CLI)
 ---------------
@@ -126,6 +130,7 @@ from typing import List, Optional
 from pipeline.cli import main as _cli_main, parse_args
 from pipeline.config import PipelineConfig
 from pipeline.pipeline import clustering, run_pipeline
+from pipeline.richness import extract_location_id, write_richness_csv
 from pipeline.summary import (
     summarize_cluster_dominant_classes_and_diff_csv,
     summarize_clustering_score_report_csv,
@@ -141,6 +146,8 @@ __all__ = [
     "PipelineConfig",
     "clustering",
     "run_pipeline",
+    "extract_location_id",
+    "write_richness_csv",
     "summarize_cluster_dominant_classes_and_diff_csv",
     "summarize_clustering_score_report_csv",
     "summarize_clusters_csv",

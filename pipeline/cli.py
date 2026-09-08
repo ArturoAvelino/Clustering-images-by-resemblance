@@ -54,6 +54,10 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
             "(required for only-clustering)."
         ),
     )
+    parser.add_argument(
+        "--subset-images",
+        help="Text file of exact images.txt entries to select from dino_files; UMAP + HDBSCAN only.",
+    )
     parser.add_argument("--input-dir", help="Folder with input JPG images")
     parser.add_argument("--output-dir", help="Folder to store embeddings and CSV output")
     parser.add_argument("--model-name", help="DINOv2 model name")

@@ -23,6 +23,7 @@ class PipelineConfig:
     output_dir: Path = Path("")
     compute: str = "full"
     dino_files: Optional[Path] = None
+    subset_images: Optional[Path] = None
     umap_files: Optional[Path] = None
     model_name: str = "dinov2_vitb14"
     dino_model: Optional[str] = None
@@ -144,6 +145,7 @@ def build_config(args) -> PipelineConfig:
         "output_dir": args.output_dir,
         "compute": args.compute,
         "dino_files": args.dino_files,
+        "subset_images": getattr(args, "subset_images", None),
         "umap_files": args.umap_files,
         "model_name": args.model_name,
         "dino_model": args.dino_model,
@@ -233,6 +235,8 @@ def build_config(args) -> PipelineConfig:
         cfg_data["ssl_ca_bundle"] = Path(cfg_data["ssl_ca_bundle"])
     if cfg_data.get("dino_files") is not None:
         cfg_data["dino_files"] = Path(cfg_data["dino_files"])
+    if cfg_data.get("subset_images") is not None:
+        cfg_data["subset_images"] = Path(cfg_data["subset_images"])
     if cfg_data.get("umap_files") is not None:
         cfg_data["umap_files"] = Path(cfg_data["umap_files"])
     if cfg_data.get("classes_benchmark_file") is not None:
@@ -242,6 +246,11 @@ def build_config(args) -> PipelineConfig:
 
 def validate_config(cfg: PipelineConfig) -> None:
     errors: List[str] = []
+    if cfg.subset_images is not None:
+        if cfg.compute != "only-dimreduction-and-clustering":
+            errors.append("subset_images requires compute=only-dimreduction-and-clustering")
+        if cfg.dino_files is not None and cfg.output_dir.resolve() == cfg.dino_files.resolve():
+            errors.append("subset_images requires output_dir different from dino_files")
     if cfg.compute not in {"full", "only-dimreduction-and-clustering", "only-clustering"}:
         errors.append(
             "compute must be 'full', 'only-dimreduction-and-clustering', or 'only-clustering'"
@@ -351,6 +360,8 @@ def config_to_yaml(cfg: PipelineConfig) -> str:
         data["ssl_ca_bundle"] = str(data["ssl_ca_bundle"])
     if data.get("dino_files") is not None:
         data["dino_files"] = str(data["dino_files"])
+    if data.get("subset_images") is not None:
+        data["subset_images"] = str(data["subset_images"])
     if data.get("umap_files") is not None:
         data["umap_files"] = str(data["umap_files"])
     if data.get("classes_benchmark_file") is not None:

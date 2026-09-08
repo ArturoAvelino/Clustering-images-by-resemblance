@@ -18,6 +18,58 @@ subclustering settings. By default, subclustering uses `umap_dim=60`,
 When `merge_noise_subclusters: true`, non-noise subclusters found inside parent
 cluster `-1` are remapped into fresh top-level cluster IDs in `clusters.csv`.
 
+## Cluster a subset using existing embeddings and sizes
+
+Keep the **original full `images.txt` in its original order** beside
+`embeddings.dat`, `embeddings.json`, and `sizes.npy`. Row numbers are the link
+between filenames and features; replacing this index with 2,000 names cannot
+identify the corresponding rows in a 15-million-row cache.
+
+Create a separate `subset_images.txt` containing one requested image per line.
+Entries must match the original index exactly, including directory prefixes
+and case. Blank lines are ignored; duplicate or missing entries are errors.
+The subset may be listed in any order, which is preserved in the outputs.
+No image files or DINO model are needed for this mode.
+
+Use [the subset configuration template](config_files/config_example_run_subset.yaml),
+or add these fields to your UMAP + HDBSCAN configuration:
+
+```yaml
+compute: only-dimreduction-and-clustering
+dino_files: /Users/aavelino/run_all_1
+subset_images: /Users/aavelino/run_all_1/subset_images.txt
+output_dir: /Users/aavelino/run_all_1/subset_2000
+subclustering: false
+```
+
+Then run from the repository directory:
+
+```bash
+python clustering compute-clusters \
+  --compute only-dimreduction-and-clustering \
+  --config /Users/aavelino/run_all_1/config_run_only_dimreduction_and_clustering.yaml
+```
+
+The CLI equivalent of the selection key is `--subset-images /path/to/list.txt`.
+`output_dir` must differ from `dino_files`. The full index is streamed once,
+and selected embeddings and sizes are read through memory maps and copied into
+the output directory. Memory use scales with the subset, not the full index.
+The output contains a reusable subset cache (`images.txt`, `embeddings.dat`,
+`embeddings.json`, `sizes.npy`), fresh `umap.npy`, `clusters.csv`, and summaries.
+Neither DINO embeddings nor image sizes are recomputed.
+
+For later parameter experiments, point `dino_files` at `subset_2000` and omit
+`subset_images` to avoid scanning the full index again. For HDBSCAN-only
+experiments, use `compute: only-clustering` and `umap_files: .../subset_2000`.
+
+UMAP and HDBSCAN are fitted on the selected images, so these clusters can differ
+from the same images' clusters in a full-dataset run. Size standardization also
+uses the subset's mean and standard deviation. Set `size_feature_weight` to your
+desired weight (the pipeline default `0.0` ignores size). Adjust UMAP neighbors
+and HDBSCAN minimum cluster size for the smaller population. Set
+`subclustering: true` if you want the usual automatic subdivision of large
+clusters; it also reuses the subset cache.
+
 ## Requirements
 
 - Python 3.11 or higher.
@@ -652,6 +704,7 @@ For each selected parent cluster, the pipeline creates
 - `parent_umap.npy`, containing the selected rows from the parent UMAP output for traceability
 - a fresh subset `umap.npy` computed with the subclustering UMAP settings
 - subset `clusters.csv` computed with the subclustering HDBSCAN settings
+- `richness.csv` computed from that subset's location and cluster assignments
 - the usual summary CSV files for that subset
 
 The step does not re-run DINOv2 embedding. It slices the cached embedding matrix
@@ -711,6 +764,21 @@ The output directory contains:
   the file also includes `parent_cluster` and `subcluster` columns for rows that
   were recovered from parent cluster `-1`.
 - `clusters_summary.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster]`
+- `richness.csv` with one row per location ID and columns `[location, cluster_<ID>, ..., richness]`.
+  A location ID is the filename portion before the first `_r<digits>c<digits>` marker,
+  so both `A09-G_r4c4_obj_328626_class_4200.jpg` and
+  `A09-G_r11c3_obj_96_class_run4.jpg` belong to location `A09-G`. Each cluster
+  column counts images from that location assigned to that cluster; `richness`
+  counts how many of those cluster columns are nonzero. Cluster columns are
+  ordered numerically and location rows retain their order of first appearance
+  in `clusters.csv`. The pipeline writes this file automatically from the final
+  cluster assignments, after optional noise-subcluster merging. It also reads
+  every `subclusters/cluster_<label>/clusters.csv` produced by automatic
+  subclustering and writes the corresponding
+  `subclusters/cluster_<label>/richness.csv` beside it.
+  It can also be regenerated independently with
+  `python generate_richness.py /path/to/clusters.csv` (use `--output` to choose
+  a different destination).
 - `classes_in_dataset.csv` with columns `[class_ID, num_objs]` by default, or `[class_ID, class_name, num_objs]` when `python count-classes-on-labeled-filenames ... --biigleID-to-names-file /path/to/labels.csv` is used after recursively scanning the labeled image directory
 - `clusters_summary_classes.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster, class_X, class_X_%_of_the_cluster, ...]` — one row per cluster, one set of columns per valid class found across the dataset. A class is recognized only when the basename ends with `_class_1234.jpg`; non-matching filenames still contribute to `num_objs_in_cluster` but are excluded from class-derived columns. Add `class_X_%_of_total_class` columns by supplying `--classes-benchmark-file`.
 - `clusters_dominant_classes_and_diff.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster, 1st_dom_class, 1st_dom_%, 1st_dom_num_objs, 2nd_dom_class, 2nd_dom_%, 2nd_dom_num_objs, diff_1st-2nd_%, diff_1st-2nd_norm]`, derived from the `num_objs_in_cluster`, `num_classes_in_cluster`, `class_X`, and `class_X_%_of_the_cluster` columns in `clusters_summary_classes.csv`

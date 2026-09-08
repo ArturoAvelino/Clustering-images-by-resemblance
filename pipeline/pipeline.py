@@ -16,7 +16,9 @@ from .config import ClusterResult, PipelineConfig, StagePaths, make_fast_config
 from .data import ImageDataset, ImageIndex, compute_size_features
 from .embedding import DINOv2Embedder, ensure_deps, resolve_device
 from .model_repo import auto_model_repo
+from .richness import write_richness_csv
 from .ssl_utils import configure_ssl
+from .subset import prepare_subset_cache
 from .summary import (
     summarize_classes_in_clusters_csv,
     summarize_cluster_dominant_classes_and_diff_csv,
@@ -25,10 +27,15 @@ from .summary import (
 
 
 def summarize_cluster_outputs(clusters_csv_path: Path, benchmark_path: Path | None = None) -> None:
-    """Write all cluster summary and score-report CSV files derived from clusters.csv."""
+    """Write all summary CSVs, including richness.csv, beside clusters.csv.
+
+    This is used for both the final top-level cluster assignments and every
+    automatically generated ``subclusters/cluster_<label>/clusters.csv`` file.
+    """
     summarize_clusters_csv(clusters_csv_path)
     summary_classes_path = summarize_classes_in_clusters_csv(clusters_csv_path, benchmark_path)
     summarize_cluster_dominant_classes_and_diff_csv(summary_classes_path)
+    write_richness_csv(clusters_csv_path)
 
 
 def stage_dir(cfg: PipelineConfig, stage: str) -> Path:
@@ -174,6 +181,7 @@ def _subclustering_config(cfg: PipelineConfig, output_dir: Path) -> PipelineConf
         cfg,
         output_dir=output_dir,
         compute="full",
+        subset_images=None,
         two_pass=False,
         fast_tune=False,
         max_images=None,
@@ -445,6 +453,7 @@ def _finish_pipeline_run(
     log_path: Path,
     total_start: float,
 ) -> Path:
+    """Finalize top-level and nested summaries from the final cluster labels."""
     summarize_cluster_outputs(final_csv, cfg.classes_benchmark_file)
     merged = run_auto_subclustering(cfg, final_csv, source_paths, log_path)
     if merged:
@@ -804,6 +813,9 @@ def run_dimreduction_and_clustering(
         raise ValueError(f"dino_files does not exist: {base_dir}")
     input_paths = stage_paths(base_dir)
     output_paths = stage_paths(cfg.output_dir)
+    if cfg.subset_images is not None:
+        prepare_subset_cache(input_paths, output_paths, cfg.subset_images)
+        input_paths = output_paths
     required = {
         "images.txt": input_paths.index_path,
         "embeddings.dat": input_paths.emb_path,
@@ -979,11 +991,14 @@ def clustering(
     **overrides,
 ) -> Path:
     """
-    Run the full clustering pipeline and return the path to the CSV output.
+    Run the full clustering pipeline and return the path to ``clusters.csv``.
 
     The CSV includes columns: image_id, cluster, labeled, probabilities,
     outlier_scores, dim_reduction. ``labeled`` is ``True`` only when the
     basename ends with ``_class_1234.jpg``.
+    A sibling ``richness.csv`` is also written with location-by-cluster counts.
+    When automatic subclustering runs, each subcluster ``clusters.csv`` receives
+    its own sibling ``richness.csv`` as well.
 
     Parameters
     ----------

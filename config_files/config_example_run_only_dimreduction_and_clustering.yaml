@@ -9,6 +9,10 @@ compute: "only-dimreduction-and-clustering"
 # from a previous run of the pipeline.
 dino_files: "/path/to/output"
 
+# Optional: select only these exact entries from the ORIGINAL full "images.txt" file.
+# Never replace the source "images.txt" with a subset list.
+# subset_images: "/path/to/subset_images.txt"
+
 # Directory where the new outputs (umap.npy, clusters.csv, images.txt) will be written.
 output_dir: "/path/to/output/umap_hdbscan_only"
 
