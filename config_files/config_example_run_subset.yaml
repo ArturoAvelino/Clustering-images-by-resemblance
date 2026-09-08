@@ -1,0 +1,19 @@
+# Preserve the original full images.txt alongside the full feature cache.
+compute: "only-dimreduction-and-clustering"
+dino_files: "/Users/aavelino/run_all_1"
+# One exact entry from the original images.txt per line, including subdirectories.
+subset_images: "/Users/aavelino/run_all_1/subset_images.txt"
+# Must differ from dino_files. Contains a reusable cache for just this subset.
+output_dir: "/Users/aavelino/run_all_1/subset_2000"
+
+umap_dim: 30
+umap_neighbors: 30
+umap_min_dist: 0.0
+umap_metric: "cosine"
+hdbscan_min_cluster_size: 25
+hdb_min_samples: 10
+# Set to your desired size weight; 0.0 ignores size, 1.0 includes standardized size.
+size_feature_weight: 1.0
+write_dimreduction_vector: true
+# Enable if you also want automatic subdivision of clusters larger than 1000.
+subclustering: false
