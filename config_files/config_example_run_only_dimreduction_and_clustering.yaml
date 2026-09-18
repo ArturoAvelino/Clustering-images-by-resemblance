@@ -49,6 +49,9 @@ hdb_allow_single_cluster: false
 # Write the UMAP vector to the dim_reduction column in clusters.csv.
 write_dimreduction_vector: true
 
+# Write richness.csv after clusters.csv is created.
+write_richness_file: false
+
 # Automatic subclustering settings.
 subclustering: true
 min_for_subclustering: 1000

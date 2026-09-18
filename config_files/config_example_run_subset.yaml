@@ -15,5 +15,6 @@ hdb_min_samples: 10
 # Set to your desired size weight; 0.0 ignores size, 1.0 includes standardized size.
 size_feature_weight: 1.0
 write_dimreduction_vector: true
+write_richness_file: false
 # Enable if you also want automatic subdivision of clusters larger than 1000.
 subclustering: false

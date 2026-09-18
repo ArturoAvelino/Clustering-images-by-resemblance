@@ -24,6 +24,8 @@ class RichnessCsvTests(unittest.TestCase):
             extract_location_id(r"nested\BM24-C_r10c3_obj_26_class_run4.jpg"),
             "BM24-C",
         )
+        with self.assertRaisesRegex(ValueError, "_r<digits>c<digits>"):
+            extract_location_id("nested/A09-G_obj_328626_class_4200.jpg")
 
     def test_write_richness_csv_counts_clusters_and_richness(self) -> None:
         rows = [
@@ -61,14 +63,48 @@ class RichnessCsvTests(unittest.TestCase):
             ],
         )
 
-    def test_write_richness_csv_rejects_unparseable_filename(self) -> None:
+    def test_write_richness_csv_skips_missing_location_id(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             clusters_path = Path(directory) / "clusters.csv"
-            clusters_path.write_text("image_id,cluster\nno_location.jpg,1\n", encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "line 2"):
-                write_richness_csv(clusters_path)
+            clusters_path.write_text(
+                "image_id,cluster\n"
+                "_r1c2_obj_1.jpg,1\n"
+                "A01_obj_2.jpg,2\n"
+                "A01_r1c2_obj_3.jpg,2\n",
+                encoding="utf-8",
+            )
 
-    def test_cluster_output_summaries_always_include_richness(self) -> None:
+            output_path = write_richness_csv(clusters_path)
+
+            with output_path.open("r", encoding="utf-8", newline="") as stream:
+                result = list(csv.reader(stream))
+            self.assertEqual(result[1], ["A01", "1", "1"])
+            with (Path(directory) / "location_IDs_not_found.csv").open(
+                "r", encoding="utf-8", newline=""
+            ) as stream:
+                missing = list(csv.reader(stream))
+            self.assertEqual(
+                missing,
+                [["filename"], ["_r1c2_obj_1.jpg"], ["A01_obj_2.jpg"]],
+            )
+
+    def test_cluster_output_summaries_write_richness_when_enabled(self) -> None:
+        clusters_path = Path("subclusters/cluster_7/clusters.csv")
+        classes_path = clusters_path.with_name("clusters_summary_classes.csv")
+        with (
+            patch("pipeline.pipeline.summarize_clusters_csv"),
+            patch(
+                "pipeline.pipeline.summarize_classes_in_clusters_csv",
+                return_value=classes_path,
+            ),
+            patch("pipeline.pipeline.summarize_cluster_dominant_classes_and_diff_csv"),
+            patch("pipeline.pipeline.write_richness_csv") as write_richness,
+        ):
+            summarize_cluster_outputs(clusters_path, write_richness_file=True)
+
+        write_richness.assert_called_once_with(clusters_path)
+
+    def test_cluster_output_summaries_skip_richness_by_default(self) -> None:
         clusters_path = Path("subclusters/cluster_7/clusters.csv")
         classes_path = clusters_path.with_name("clusters_summary_classes.csv")
         with (
@@ -82,7 +118,7 @@ class RichnessCsvTests(unittest.TestCase):
         ):
             summarize_cluster_outputs(clusters_path)
 
-        write_richness.assert_called_once_with(clusters_path)
+        write_richness.assert_not_called()
 
 
 if __name__ == "__main__":

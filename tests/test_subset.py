@@ -47,13 +47,25 @@ class SubsetTests(unittest.TestCase):
         self.assertEqual(before, {p: p.read_bytes() for p in before})
 
     def test_invalid_selection_does_not_write_outputs(self):
-        for contents, error in [("", "empty"), ("absent.jpg", "not found"),
+        for contents, error in [("", "empty"),
                                 (self.names[0] + "\n" + self.names[0], "duplicate")]:
             with self.subTest(error=error):
                 self.selection.write_text(contents)
                 with self.assertRaisesRegex(ValueError, error):
                     self.prepare()
                 self.assertFalse(self.output.index_path.parent.exists())
+
+    def test_missing_subset_images_are_reported_and_skipped(self):
+        self.selection.write_text(f"{self.names[0]}\nabsent.jpg\n{self.names[1]}\n")
+
+        self.prepare()
+
+        self.assertEqual(self.output.index_path.read_text().splitlines(), self.names[:2])
+        with (self.output.index_path.parent / "crop_filename_not_found_in_embedding.csv").open(
+            "r", encoding="utf-8", newline=""
+        ) as stream:
+            missing = list(csv.reader(stream))
+        self.assertEqual(missing, [["filename"], ["absent.jpg"]])
 
     def test_replaced_source_index_rejected(self):
         self.source.index_path.write_text(self.selection.read_text())
@@ -93,6 +105,7 @@ class SubsetTests(unittest.TestCase):
         )
         cfg = build_config(parse_args(["--config", str(config_path), "--compute", "only-dimreduction-and-clustering"]))
         validate_config(cfg)
+        self.assertFalse(cfg.write_richness_file)
         self.assertIn(str(self.selection), config_to_yaml(cfg))
         with (
             patch("pipeline.pipeline.compute_size_features", side_effect=AssertionError("recomputed sizes")),
@@ -108,6 +121,13 @@ class SubsetTests(unittest.TestCase):
             "--compute", "only-dimreduction-and-clustering",
         ]))
         self.assertEqual(override.subset_images, Path("override.txt"))
+        self.assertFalse(override.write_richness_file)
+        richness_override = build_config(parse_args([
+            "--config", str(config_path),
+            "--compute", "only-dimreduction-and-clustering",
+            "--write-richness-file",
+        ]))
+        self.assertTrue(richness_override.write_richness_file)
         override.compute = "full"
         with self.assertRaisesRegex(ValueError, "subset_images requires compute"):
             validate_config(override)

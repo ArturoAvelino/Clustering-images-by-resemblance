@@ -331,6 +331,32 @@ cluster. Its columns are `cluster_id`, `num_objs_in_cluster`, and
 `num_classes_in_cluster`. The class count uses the same class extraction rule as
 `clusters_summary_classes.csv`.
 
+### Generate richness.csv from an existing clusters.csv:
+
+The pipeline writes `richness.csv` only when `write_richness_file: true` is set
+in the config, or when `--write-richness-file` is passed to
+`compute-clusters`. In that automatic mode, richness generation happens after
+the corresponding `clusters.csv` has been written. Automatic subcluster outputs
+follow the same flag, so each subcluster `clusters.csv` gets a sibling
+`richness.csv` only when the flag is enabled.
+
+You can also generate `richness.csv` on demand from an existing clusters file:
+
+```bash
+python clustering write_richness_file \
+  --clusters-file /path/to/clusters.csv \
+  --output-dir /path/to/output/directory
+```
+
+This writes `/path/to/output/directory/richness.csv`. The input file must have
+`image_id` and `cluster` columns.
+
+Location IDs are parsed only from the filename prefix before the first
+`_r<digits>c<digits>` marker. For example,
+`A09-G_r4c4_obj_328626_class_4200.jpg` maps to `A09-G`. Filenames without this
+marker, or with no prefix before the marker, are skipped and written to
+`location_IDs_not_found.csv` beside `richness.csv`.
+
 ### Generate a per-class breakdown of clusters:
 
 `clusters_summary_classes.csv` is written automatically every time the pipeline
@@ -591,6 +617,7 @@ most important fields are:
 - `hdb_cluster_selection_epsilon` (default `0.0`; larger values merge nearby HDBSCAN clusters)
 - `hdb_allow_single_cluster` (default `false`)
 - `write_dimreduction_vector` (default `true`, writes the UMAP vector to `clusters.csv`)
+- `write_richness_file` (default `false`, writes `richness.csv` after `clusters.csv`)
 - `two_pass` or `fast_tune` (recommended: `false`)
 - `refine_prob_threshold` (default `0.7`; used only when `two_pass: true`)
 - `refine_include_noise` (default `true`; used only when `two_pass: true`)
@@ -704,7 +731,7 @@ For each selected parent cluster, the pipeline creates
 - `parent_umap.npy`, containing the selected rows from the parent UMAP output for traceability
 - a fresh subset `umap.npy` computed with the subclustering UMAP settings
 - subset `clusters.csv` computed with the subclustering HDBSCAN settings
-- `richness.csv` computed from that subset's location and cluster assignments
+- optional `richness.csv` computed from that subset's location and cluster assignments
 - the usual summary CSV files for that subset
 
 The step does not re-run DINOv2 embedding. It slices the cached embedding matrix
@@ -764,21 +791,24 @@ The output directory contains:
   the file also includes `parent_cluster` and `subcluster` columns for rows that
   were recovered from parent cluster `-1`.
 - `clusters_summary.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster]`
-- `richness.csv` with one row per location ID and columns `[location, cluster_<ID>, ..., richness]`.
+- Optional `richness.csv` with one row per location ID and columns `[location, cluster_<ID>, ..., richness]`.
   A location ID is the filename portion before the first `_r<digits>c<digits>` marker,
   so both `A09-G_r4c4_obj_328626_class_4200.jpg` and
-  `A09-G_r11c3_obj_96_class_run4.jpg` belong to location `A09-G`. Each cluster
-  column counts images from that location assigned to that cluster; `richness`
-  counts how many of those cluster columns are nonzero. Cluster columns are
-  ordered numerically and location rows retain their order of first appearance
-  in `clusters.csv`. The pipeline writes this file automatically from the final
-  cluster assignments, after optional noise-subcluster merging. It also reads
-  every `subclusters/cluster_<label>/clusters.csv` produced by automatic
-  subclustering and writes the corresponding
-  `subclusters/cluster_<label>/richness.csv` beside it.
-  It can also be regenerated independently with
-  `python generate_richness.py /path/to/clusters.csv` (use `--output` to choose
-  a different destination).
+  `A09-G_r11c3_obj_96_class_run4.jpg` belong to location `A09-G`. Filenames
+  without that marker, or with no prefix before it, are skipped and written to
+  `location_IDs_not_found.csv`. Each cluster column counts images from that
+  location assigned to that cluster; `richness` counts how many of those cluster
+  columns are nonzero. Cluster columns are ordered numerically and location rows
+  retain their order of first appearance in `clusters.csv`. Set
+  `write_richness_file: true` or pass `--write-richness-file` to write this file
+  automatically after `clusters.csv`, including for automatic subcluster outputs.
+  It can also be generated independently with
+  `python clustering write_richness_file --clusters-file /path/to/clusters.csv --output-dir /path/to/output`.
+- `crop_filename_not_found_in_embedding.csv` when cached reruns or subset runs
+  skip image names that are listed in `images.txt` or `subset_images.txt` but do
+  not have a matching cached embedding row. This can happen when names are
+  misspelled, contain different Unicode normalization, or include invalid
+  characters compared with the cached feature index.
 - `classes_in_dataset.csv` with columns `[class_ID, num_objs]` by default, or `[class_ID, class_name, num_objs]` when `python count-classes-on-labeled-filenames ... --biigleID-to-names-file /path/to/labels.csv` is used after recursively scanning the labeled image directory
 - `clusters_summary_classes.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster, class_X, class_X_%_of_the_cluster, ...]` — one row per cluster, one set of columns per valid class found across the dataset. A class is recognized only when the basename ends with `_class_1234.jpg`; non-matching filenames still contribute to `num_objs_in_cluster` but are excluded from class-derived columns. Add `class_X_%_of_total_class` columns by supplying `--classes-benchmark-file`.
 - `clusters_dominant_classes_and_diff.csv` with columns `[cluster_id, num_objs_in_cluster, num_classes_in_cluster, 1st_dom_class, 1st_dom_%, 1st_dom_num_objs, 2nd_dom_class, 2nd_dom_%, 2nd_dom_num_objs, diff_1st-2nd_%, diff_1st-2nd_norm]`, derived from the `num_objs_in_cluster`, `num_classes_in_cluster`, `class_X`, and `class_X_%_of_the_cluster` columns in `clusters_summary_classes.csv`

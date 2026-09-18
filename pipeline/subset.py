@@ -1,6 +1,7 @@
 """Extract a small, row-aligned cache without loading the full dataset into RAM."""
 from __future__ import annotations
 
+import csv
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -10,11 +11,27 @@ import numpy as np
 from .config import StagePaths
 
 
+def _write_missing_embedding_report(output_dir: Path, names: list[str]) -> None:
+    """Write requested image names that do not have cached embedding rows."""
+    if not names:
+        return
+    output_dir.mkdir(parents=True, exist_ok=True)
+    report_path = output_dir / "crop_filename_not_found_in_embedding.csv"
+    with report_path.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(["filename"])
+        for name in names:
+            writer.writerow([name])
+
+
 def prepare_subset_cache(source: StagePaths, output: StagePaths, selection: Path) -> None:
     """Match exact index entries, retaining selection order and rejecting ambiguity.
 
     The source index is streamed once; only requested names and row numbers are
-    retained. Memory-mapped arrays are accessed only at selected rows.
+    retained. Memory-mapped arrays are accessed only at selected rows. Requested
+    names that are absent from ``images.txt`` or appear beyond the available
+    embedding rows are skipped and written to
+    ``crop_filename_not_found_in_embedding.csv`` in the subset output directory.
     """
     if source.index_path.parent.resolve() == output.index_path.parent.resolve():
         raise ValueError("Subset output_dir must differ from dino_files; preserve the full cache.")
@@ -58,19 +75,20 @@ def prepare_subset_cache(source: StagePaths, output: StagePaths, selection: Path
             if name in wanted:
                 if name in found:
                     raise ValueError(f"Requested image occurs more than once in source images.txt: {name}")
-                found[name] = count
+                if count < n:
+                    found[name] = count
             count += 1
-    if count != n:
+    if count < n:
         raise ValueError(
             f"Source images.txt has {count} entries, but embeddings.json reports {n}. "
             "Restore the original full images.txt in its original order."
         )
     missing = [name for name in names if name not in found]
     if missing:
-        raise ValueError(
-            f"{len(missing)} subset images not found in source images.txt: {missing[:5]}. "
-            "Use exact entries, including any directory prefixes."
-        )
+        _write_missing_embedding_report(output.index_path.parent, missing)
+        names = [name for name in names if name in found]
+        if not names:
+            raise ValueError("No subset images were found in the cached embeddings.")
     indices = np.array([found[name] for name in names], dtype=np.int64)
     embeddings = np.memmap(source.emb_path, mode="r", dtype=dtype, shape=(n, dim))
     output.index_path.parent.mkdir(parents=True, exist_ok=True)

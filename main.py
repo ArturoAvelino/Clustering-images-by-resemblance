@@ -28,10 +28,11 @@ Outputs
   merge_noise_subclusters is true, parent_cluster and subcluster traceability
   columns are added for recovered parent-noise rows.
 - clusters_summary.csv: columns [cluster_id, num_objs_in_cluster, num_classes_in_cluster].
-- richness.csv: one row per location prefix (the part of image_id before
-  `_r<digits>c<digits>`), with per-cluster image counts and the number of
-  represented clusters in the `richness` column. The top-level run and every
-  generated subclusters/cluster_<label>/ directory receive this file.
+- richness.csv: optional output enabled with `write_richness_file: true`; one
+  row per location ID, with per-cluster image counts and the number of
+  represented clusters in the `richness` column. Location IDs are parsed only
+  from the prefix before `_r<digits>c<digits>`; non-matching filenames are
+  skipped and listed in location_IDs_not_found.csv.
 - classes_in_dataset.csv: columns [class_ID, num_objs] by default, or
   [class_ID, class_name, num_objs] when generated with
   `python count-classes-on-labeled-filenames --biigleID-to-names-file ...`.
@@ -48,9 +49,12 @@ Outputs
 - embeddings.dat / embeddings.json: saved embedding matrix + metadata.
 - umap.npy: reduced vectors used for clustering.
 - images.txt: stable list of image paths used for the run.
+- crop_filename_not_found_in_embedding.csv: written when cached reruns or subset
+  runs skip filenames listed in images.txt or subset_images.txt that have no
+  matching cached embedding/vector row.
 - subclusters/cluster_<label>/: automatic subclustering outputs for oversized
   final clusters, including subset cached artifacts, parent_umap.npy, a fresh
-  umap.npy, clusters.csv, richness.csv, and summaries.
+  umap.npy, clusters.csv, optional richness.csv, and summaries.
 
 How to use (CLI)
 ---------------
@@ -61,6 +65,8 @@ python clustering compute-clusters --compute only-dimreduction-and-clustering \\
   --config /path/to/config_example_run_only_dimreduction_and_clustering.yaml
 python clustering compute-clusters --compute only-clustering \\
   --config /path/to/config_example_run_only_clustering.yaml
+python clustering write_richness_file --clusters-file /path/to/clusters.csv \\
+  --output-dir /path/to/output
 python clustering copy-crops-to-subdirs-representative --clusters-file /path/to/file/clusters.csv \\
   --input-dir /path/to/images --dest-dir /path/to/clustered \\
   --probability 0.99 --outlier-score 0.001
@@ -97,6 +103,7 @@ autocrop: true
 image_size_in_kbytes_min: 10
 image_size_in_kbytes_max: 99.99
 write_dimreduction_vector: true
+write_richness_file: false
 
 An annotated YAML template is available at config_files/config_example_run_full_pipeline.yaml.
 For rerunning UMAP + HDBSCAN from cached DINOv2 outputs, use

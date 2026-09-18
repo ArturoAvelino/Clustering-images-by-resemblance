@@ -26,16 +26,22 @@ from .summary import (
 )
 
 
-def summarize_cluster_outputs(clusters_csv_path: Path, benchmark_path: Path | None = None) -> None:
-    """Write all summary CSVs, including richness.csv, beside clusters.csv.
+def summarize_cluster_outputs(
+    clusters_csv_path: Path,
+    benchmark_path: Path | None = None,
+    write_richness_file: bool = False,
+) -> None:
+    """Write summary CSVs beside clusters.csv.
 
     This is used for both the final top-level cluster assignments and every
     automatically generated ``subclusters/cluster_<label>/clusters.csv`` file.
+    ``richness.csv`` is written only when ``write_richness_file`` is true.
     """
     summarize_clusters_csv(clusters_csv_path)
     summary_classes_path = summarize_classes_in_clusters_csv(clusters_csv_path, benchmark_path)
     summarize_cluster_dominant_classes_and_diff_csv(summary_classes_path)
-    write_richness_csv(clusters_csv_path)
+    if write_richness_file:
+        write_richness_csv(clusters_csv_path)
 
 
 def stage_dir(cfg: PipelineConfig, stage: str) -> Path:
@@ -81,6 +87,34 @@ def _write_image_index(index_path: Path, rel_paths: Iterable[str]) -> None:
     with index_path.open("w", encoding="utf-8") as f:
         for rel in rel_paths:
             f.write(rel + "\n")
+
+
+def _write_skipped_filenames_csv(report_path: Path, filenames: Iterable[str]) -> None:
+    """Append unique skipped image filenames to a single-column audit CSV."""
+    rows = list(filenames)
+    if not rows:
+        return
+    existing: set[str] = set()
+    if report_path.exists():
+        with report_path.open("r", encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f)
+            if reader.fieldnames and "filename" in reader.fieldnames:
+                existing = {
+                    str(row.get("filename", "")).strip()
+                    for row in reader
+                    if row.get("filename")
+                }
+    rows = [row for row in rows if row not in existing]
+    if not rows:
+        return
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    write_header = not report_path.exists()
+    with report_path.open("a", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        if write_header:
+            writer.writerow(["filename"])
+        for filename in rows:
+            writer.writerow([filename])
 
 
 def _required_subclustering_artifacts(paths: StagePaths) -> dict[str, Path]:
@@ -233,6 +267,10 @@ def run_auto_subclustering(
     from parent cluster ``-1`` are remapped into fresh top-level cluster IDs in
     ``clusters_csv_path``. The rewritten CSV keeps row order and adds
     ``parent_cluster`` and ``subcluster`` traceability columns.
+
+    If a final ``clusters.csv`` image is not present in the cached DINOv2
+    ``images.txt`` used for subclustering, that image is skipped for
+    subclustering and reported in ``crop_filename_not_found_in_embedding.csv``.
     """
     if not cfg.subclustering:
         return False
@@ -289,10 +327,13 @@ def run_auto_subclustering(
         subset_rel_paths = oversized[label]
         missing_rels = [rel for rel in subset_rel_paths if rel not in source_index]
         if missing_rels:
-            raise ValueError(
-                "Final clusters.csv contains image paths not present in cached "
-                f"{source_paths.index_path}: {missing_rels[:3]}"
+            _write_skipped_filenames_csv(
+                cfg.output_dir / "crop_filename_not_found_in_embedding.csv",
+                missing_rels,
             )
+            subset_rel_paths = [rel for rel in subset_rel_paths if rel in source_index]
+            if not subset_rel_paths:
+                continue
         subset_indices = [source_index[rel] for rel in subset_rel_paths]
         sub_dir = sub_root / f"cluster_{label}"
         sub_paths = stage_paths(sub_dir)
@@ -346,7 +387,11 @@ def run_auto_subclustering(
             result.exemplars,
             dim_reduction,
         )
-        summarize_cluster_outputs(sub_paths.csv_path, cfg.classes_benchmark_file)
+        summarize_cluster_outputs(
+            sub_paths.csv_path,
+            cfg.classes_benchmark_file,
+            cfg.write_richness_file,
+        )
         sub_counts = Counter(int(x) for x in result.labels)
         sub_noise = int(sub_counts.get(-1, 0))
         if label == -1:
@@ -454,13 +499,13 @@ def _finish_pipeline_run(
     total_start: float,
 ) -> Path:
     """Finalize top-level and nested summaries from the final cluster labels."""
-    summarize_cluster_outputs(final_csv, cfg.classes_benchmark_file)
+    summarize_cluster_outputs(final_csv, cfg.classes_benchmark_file, cfg.write_richness_file)
     merged = run_auto_subclustering(cfg, final_csv, source_paths, log_path)
     if merged:
         msg = "[subclustering] Merged non-noise subclusters from parent cluster -1."
         print(msg)
         _log_timing(log_path, msg)
-        summarize_cluster_outputs(final_csv, cfg.classes_benchmark_file)
+        summarize_cluster_outputs(final_csv, cfg.classes_benchmark_file, cfg.write_richness_file)
     total_dt = time.perf_counter() - total_start
     total_msg = f"[total] Pipeline runtime: {_format_duration(total_dt)}"
     print(total_msg)
@@ -806,6 +851,13 @@ def run_pipeline(cfg: PipelineConfig) -> Path:
 def run_dimreduction_and_clustering(
     cfg: PipelineConfig, log_path: Path, total_start: float
 ) -> Path:
+    """Run UMAP and HDBSCAN from cached DINOv2 embeddings.
+
+    If ``images.txt`` has more rows than ``embeddings.dat`` according to
+    ``embeddings.json``, the extra image names cannot be mapped to embedding
+    rows. They are skipped and reported in
+    ``crop_filename_not_found_in_embedding.csv`` in the output directory.
+    """
     if cfg.dino_files is None:
         raise ValueError("dino_files must be set for only-dimreduction-and-clustering.")
     base_dir = cfg.dino_files
@@ -836,7 +888,14 @@ def run_dimreduction_and_clustering(
     with input_paths.meta_path.open("r", encoding="utf-8") as f:
         meta = json.load(f)
     expected = int(meta.get("num_images", -1))
-    if expected > 0 and expected != len(rel_paths):
+    if expected > 0 and expected < len(rel_paths):
+        skipped = rel_paths[expected:]
+        _write_skipped_filenames_csv(
+            cfg.output_dir / "crop_filename_not_found_in_embedding.csv",
+            skipped,
+        )
+        rel_paths = rel_paths[:expected]
+    elif expected > 0 and expected > len(rel_paths):
         raise ValueError(
             "Mismatch between embeddings.json num_images and images.txt length. "
             f"num_images={expected} images.txt={len(rel_paths)}"
@@ -901,7 +960,12 @@ def run_dimreduction_and_clustering(
 
 
 def run_clustering_only(cfg: PipelineConfig, log_path: Path, total_start: float) -> Path:
-    """Run HDBSCAN only using cached UMAP outputs."""
+    """Run HDBSCAN only using cached UMAP outputs.
+
+    If ``images.txt`` has more rows than ``umap.npy``, the extra image names
+    cannot be mapped to reduced vectors. They are skipped and reported in
+    ``crop_filename_not_found_in_embedding.csv`` in the output directory.
+    """
     if cfg.umap_files is None:
         raise ValueError("umap_files must be set for only-clustering.")
     base_dir = cfg.umap_files
@@ -927,7 +991,14 @@ def run_clustering_only(cfg: PipelineConfig, log_path: Path, total_start: float)
     umap_data = np.load(input_paths.umap_path)
     if umap_data.ndim != 2:
         raise ValueError(f"umap.npy must be 2D, got shape={umap_data.shape}")
-    if umap_data.shape[0] != len(rel_paths):
+    if umap_data.shape[0] < len(rel_paths):
+        skipped = rel_paths[umap_data.shape[0]:]
+        _write_skipped_filenames_csv(
+            cfg.output_dir / "crop_filename_not_found_in_embedding.csv",
+            skipped,
+        )
+        rel_paths = rel_paths[:umap_data.shape[0]]
+    elif umap_data.shape[0] > len(rel_paths):
         raise ValueError(
             "Mismatch between umap.npy rows and images.txt length. "
             f"umap.npy={umap_data.shape[0]} images.txt={len(rel_paths)}"
@@ -995,10 +1066,9 @@ def clustering(
 
     The CSV includes columns: image_id, cluster, labeled, probabilities,
     outlier_scores, dim_reduction. ``labeled`` is ``True`` only when the
-    basename ends with ``_class_1234.jpg``.
-    A sibling ``richness.csv`` is also written with location-by-cluster counts.
-    When automatic subclustering runs, each subcluster ``clusters.csv`` receives
-    its own sibling ``richness.csv`` as well.
+    basename ends with ``_class_1234.jpg``. Set
+    ``write_richness_file=True`` to write a sibling ``richness.csv`` after each
+    ``clusters.csv`` file, including automatic subcluster outputs.
 
     Parameters
     ----------
@@ -1017,7 +1087,7 @@ def clustering(
     **overrides
         Any other PipelineConfig fields to override, e.g. two_pass=True,
         autocrop=False, fast_tune=True, model_name="dinov2_vitb14",
-        dino_model="/path/to/dinov2".
+        dino_model="/path/to/dinov2", write_richness_file=True.
     """
     cfg = PipelineConfig(
         input_dir=Path(input_image_dir),

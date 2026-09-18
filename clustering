@@ -20,6 +20,8 @@ Usage:
   python clustering copy-crops-to-subdir-outliers --clusters-file /path/to/output/clusters.csv \\
     --input-dir /path/to/images --dest-dir /path/to/clustered \\
     --probability 0.3 --outlier-score 0.7
+  python clustering write_richness_file --clusters-file /path/to/output/clusters.csv \\
+    --output-dir /path/to/output
 """
 
 import sys
@@ -33,6 +35,7 @@ def _print_top_level_help() -> None:
         "  python clustering copy-crops-to-cluster-dirs [options]\n\n"
         "  python clustering copy-crops-to-subdirs-representative [options]\n"
         "  python clustering copy-crops-to-subdir-outliers [options]\n\n"
+        "  python clustering write_richness_file [options]\n\n"
         "Run `python clustering <command> --help` for help with each command."
     )
 
@@ -66,6 +69,12 @@ def main(argv: list[str] | None = None) -> int:
         import copy_crops_to_cluster_dirs as _copy_crops_to_cluster_dirs
 
         return _copy_crops_to_cluster_dirs.create_subdir_outliers(rest)
+    if command == "write_richness_file":
+        from pipeline.cli import write_richness_file_main
+
+        return write_richness_file_main(
+            rest, prog="python clustering write_richness_file"
+        )
 
     print(f"Unknown command: {command}", file=sys.stderr)
     _print_top_level_help()

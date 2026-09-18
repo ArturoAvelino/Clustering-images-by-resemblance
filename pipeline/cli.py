@@ -6,6 +6,7 @@ from typing import List, Optional, Tuple
 
 from .config import build_config, config_to_yaml, validate_config
 from .pipeline import run_pipeline
+from .richness import write_richness_csv
 from .summary import (
     summarize_classes_in_clusters_csv,
     summarize_cluster_dominant_classes_and_diff_csv,
@@ -166,6 +167,20 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
         dest="write_dimreduction_vector",
         action="store_false",
     )
+    write_richness = parser.add_mutually_exclusive_group()
+    write_richness.add_argument(
+        "--write-richness-file",
+        dest="write_richness_file",
+        action="store_true",
+        default=None,
+        help="Write richness.csv after clusters.csv is created.",
+    )
+    write_richness.add_argument(
+        "--no-write-richness-file",
+        dest="write_richness_file",
+        action="store_false",
+        help="Skip automatic richness.csv generation. Default.",
+    )
     subclustering = parser.add_mutually_exclusive_group()
     subclustering.add_argument(
         "--subclustering",
@@ -305,6 +320,34 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
         ),
     )
     return parser
+
+
+def build_richness_parser(
+    *, prog: Optional[str] = None, add_help: bool = True
+) -> argparse.ArgumentParser:
+    """Build the parser for on-demand richness.csv generation."""
+    parser = argparse.ArgumentParser(
+        prog=prog,
+        add_help=add_help,
+        description="Create richness.csv from an existing clusters.csv file.",
+    )
+    parser.add_argument("--clusters-file", type=Path, required=True)
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        required=True,
+        help="Directory where richness.csv will be written.",
+    )
+    return parser
+
+
+def write_richness_file_main(
+    argv: Optional[List[str]] = None, *, prog: Optional[str] = None
+) -> int:
+    """CLI entry point for writing richness.csv from an existing clusters.csv."""
+    args = build_richness_parser(prog=prog).parse_args(argv)
+    write_richness_csv(args.clusters_file, args.output_dir / "richness.csv")
+    return 0
 
 
 def parse_args(argv: Optional[List[str]] = None, *, prog: Optional[str] = None) -> argparse.Namespace:

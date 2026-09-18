@@ -16,7 +16,10 @@ class PipelineConfig:
     The same schema is accepted for full runs, `only-dimreduction-and-clustering`,
     and `only-clustering`. Some fields are mode-specific at runtime; for example,
     `refine_prob_threshold` and `refine_include_noise` are only used when
-    `two_pass` is enabled during a full run.
+    `two_pass` is enabled during a full run. `write_richness_file` controls
+    whether the pipeline writes `richness.csv` automatically after each
+    `clusters.csv`; it defaults to `False` so richness can also be generated on
+    demand from an existing clusters file.
     """
 
     input_dir: Optional[Path] = None
@@ -61,6 +64,7 @@ class PipelineConfig:
     refine_prob_threshold: float = 0.7
     refine_include_noise: bool = True
     write_dimreduction_vector: bool = True
+    write_richness_file: bool = False
     force: bool = False
     torch_threads: Optional[int] = None
     classes_benchmark_file: Optional[Path] = None
@@ -181,6 +185,7 @@ def build_config(args) -> PipelineConfig:
         "refine_prob_threshold": args.refine_prob_threshold,
         "refine_include_noise": args.refine_include_noise,
         "write_dimreduction_vector": args.write_dimreduction_vector,
+        "write_richness_file": getattr(args, "write_richness_file", None),
         "force": args.force,
         "torch_threads": args.torch_threads,
         "classes_benchmark_file": getattr(args, "classes_benchmark_file", None),

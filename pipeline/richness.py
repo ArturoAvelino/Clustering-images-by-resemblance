@@ -12,15 +12,35 @@ _LOCATION_BOUNDARY = re.compile(r"_r\d+c\d+")
 
 
 def extract_location_id(image_id: str) -> str:
-    """Return the filename prefix before its first ``_r<digits>c<digits>`` marker."""
+    """Return the location ID parsed from an image ID.
+
+    The filename must contain a row/column crop marker such as
+    ``A09-G_r4c4_obj_328626.jpg``. The location ID is the prefix before the
+    first ``_r<digits>c<digits>`` match. Filenames without that marker, or with
+    an empty prefix before it, do not have a valid location ID.
+    """
     filename = re.split(r"[/\\]", image_id)[-1]
     match = _LOCATION_BOUNDARY.search(filename)
     if match is None or match.start() == 0:
         raise ValueError(
-            f"Cannot extract a location ID from image_id {image_id!r}; expected a "
-            "filename containing '_r<digits>c<digits>'."
+            f"Cannot extract a location ID from image_id {image_id!r}; "
+            "expected a filename containing '_r<digits>c<digits>' with a "
+            "non-empty prefix."
         )
     return filename[: match.start()]
+
+
+def _write_location_ids_not_found(output_path: Path, image_ids: list[str]) -> None:
+    """Write image IDs that could not provide a usable location ID."""
+    if not image_ids:
+        return
+    report_path = output_path.with_name("location_IDs_not_found.csv")
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    with report_path.open("w", encoding="utf-8", newline="") as destination:
+        writer = csv.writer(destination)
+        writer.writerow(["filename"])
+        for image_id in image_ids:
+            writer.writerow([image_id])
 
 
 def write_richness_csv(
@@ -30,11 +50,14 @@ def write_richness_csv(
     """Create a location-by-cluster count table from ``clusters.csv``.
 
     Location IDs are extracted from the basename of each ``image_id`` by taking
-    everything before the first ``_r<digits>c<digits>`` marker. The output has
-    one row per location, one ``cluster_<ID>`` count column per cluster, and a
-    final ``richness`` column counting clusters with at least one image at that
-    location. Locations retain their first-seen order; cluster columns are
-    sorted numerically when possible.
+    everything before the first ``_r<digits>c<digits>`` marker. Rows without
+    that marker, or with no prefix before the marker, are skipped and written to
+    ``location_IDs_not_found.csv`` next to the output file.
+
+    The output has one row per location, one ``cluster_<ID>`` count column per
+    cluster, and a final ``richness`` column counting clusters with at least one
+    image at that location. Locations retain their first-seen order; cluster
+    columns are sorted numerically when possible.
     """
     if output_path is None:
         output_path = clusters_path.with_name("richness.csv")
@@ -43,6 +66,7 @@ def write_richness_csv(
 
     counts_by_location: dict[str, Counter[str]] = {}
     clusters: set[str] = set()
+    missing_location_ids: list[str] = []
     with clusters_path.open("r", encoding="utf-8", newline="") as source:
         reader = csv.DictReader(source)
         if reader.fieldnames is None:
@@ -61,11 +85,13 @@ def write_richness_csv(
                 )
             try:
                 location = extract_location_id(image_id)
-            except ValueError as exc:
-                raise ValueError(f"{clusters_path}, line {line_number}: {exc}") from exc
+            except ValueError:
+                missing_location_ids.append(image_id)
+                continue
             counts_by_location.setdefault(location, Counter())[cluster] += 1
             clusters.add(cluster)
 
+    _write_location_ids_not_found(output_path, missing_location_ids)
     sorted_clusters = sorted(clusters, key=_sort_key)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8", newline="") as destination:
