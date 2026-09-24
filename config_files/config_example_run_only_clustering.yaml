@@ -29,6 +29,12 @@ hdb_cluster_selection_method: "eom"
 hdb_cluster_selection_epsilon: 0.0
 hdb_allow_single_cluster: false
 
+# Optional low-memory mode for very large datasets: fit HDBSCAN on a sampled
+# subset of UMAP rows, then assign every row in batches with approximate_predict.
+# hdbscan_fit_sample_size: 500000
+hdbscan_predict_batch_size: 100000
+hdbscan_core_dist_n_jobs: 1
+
 # Weight applied to the size feature when clustering.
 # 0.0 disables the size feature; higher values make size more influential.
 size_feature_weight: 0.0

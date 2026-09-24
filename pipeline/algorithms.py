@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
-import os
+import tempfile
 from pathlib import Path
 from typing import List
 
@@ -32,20 +32,12 @@ class UMAPReducer:
             )
         dtype = np.float16 if meta["dtype"] == "float16" else np.float32
         emb = np.memmap(emb_path, mode="r", dtype=dtype, shape=(n, dim))
-        emb = np.asarray(emb, dtype=np.float32)
-        sizes = np.load(size_path).astype(np.float32)
+        sizes = np.load(size_path, mmap_mode="r")
         if sizes.shape[0] != n:
             raise ValueError(
                 f"Size feature count ({sizes.shape[0]}) does not match embeddings ({n})."
             )
-        size_feature = sizes.reshape(-1, 1)
-        mean = float(size_feature.mean())
-        std = float(size_feature.std())
-        if std < 1e-6:
-            std = 1.0
-        size_feature = (size_feature - mean) / std
-        size_feature *= float(self.cfg.size_feature_weight)
-        emb = np.concatenate([emb, size_feature], axis=1)
+        size_stats = self._size_stats(sizes) if self.cfg.size_feature_weight > 0 else None
         reducer = umap.UMAP(
             n_components=self.cfg.umap_dim,
             n_neighbors=self.cfg.umap_neighbors,
@@ -54,9 +46,120 @@ class UMAPReducer:
             low_memory=True,
             random_state=42,
         )
-        low = reducer.fit_transform(emb)
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        np.save(out_path, low.astype(np.float32))
+        fit_sample_size = self.cfg.umap_fit_sample_size
+        if fit_sample_size is not None and n > fit_sample_size:
+            self._fit_sample_transform_all(reducer, emb, sizes, size_stats, out_path)
+            return
+
+        with self._umap_input_memmap(emb, sizes, size_stats, out_path.parent) as data:
+            low = reducer.fit_transform(data)
+        np.save(out_path, low.astype(np.float32, copy=False))
+
+    def _fit_sample_transform_all(
+        self,
+        reducer,
+        emb: np.memmap,
+        sizes: np.ndarray,
+        size_stats: tuple[float, float] | None,
+        out_path: Path,
+    ) -> None:
+        n = emb.shape[0]
+        sample_size = int(self.cfg.umap_fit_sample_size or n)
+        rng = np.random.default_rng(42)
+        sample_idx = np.sort(rng.choice(n, size=sample_size, replace=False))
+        sample = self._build_input_rows(emb, sizes, size_stats, sample_idx)
+        reducer.fit(sample)
+        del sample
+
+        out = np.lib.format.open_memmap(
+            out_path,
+            mode="w+",
+            dtype=np.float32,
+            shape=(n, self.cfg.umap_dim),
+        )
+        batch_size = int(self.cfg.umap_transform_batch_size)
+        for start in range(0, n, batch_size):
+            stop = min(start + batch_size, n)
+            batch = self._build_input_slice(emb, sizes, size_stats, start, stop)
+            out[start:stop] = reducer.transform(batch).astype(np.float32, copy=False)
+            out.flush()
+        del out
+
+    def _umap_input_memmap(
+        self,
+        emb: np.memmap,
+        sizes: np.ndarray,
+        size_stats: tuple[float, float] | None,
+        temp_dir: Path,
+    ):
+        if emb.dtype == np.float32 and size_stats is None:
+            return _ArrayContext(emb)
+
+        n, dim = emb.shape
+        input_dim = dim + (1 if size_stats is not None else 0)
+        return _TemporaryInputMemmap(
+            shape=(n, input_dim),
+            temp_dir=temp_dir,
+            fill=lambda out: self._fill_input_memmap(out, emb, sizes, size_stats),
+        )
+
+    def _fill_input_memmap(
+        self,
+        out: np.memmap,
+        emb: np.memmap,
+        sizes: np.ndarray,
+        size_stats: tuple[float, float] | None,
+    ) -> None:
+        batch_size = int(self.cfg.umap_transform_batch_size)
+        for start in range(0, emb.shape[0], batch_size):
+            stop = min(start + batch_size, emb.shape[0])
+            out[start:stop] = self._build_input_slice(emb, sizes, size_stats, start, stop)
+        out.flush()
+
+    def _build_input_rows(
+        self,
+        emb: np.memmap,
+        sizes: np.ndarray,
+        size_stats: tuple[float, float] | None,
+        rows: np.ndarray,
+    ) -> np.ndarray:
+        data = np.asarray(emb[rows], dtype=np.float32)
+        if size_stats is None:
+            return data
+        size_feature = self._normalized_size_feature(sizes[rows], size_stats)
+        return np.concatenate([data, size_feature], axis=1)
+
+    def _build_input_slice(
+        self,
+        emb: np.memmap,
+        sizes: np.ndarray,
+        size_stats: tuple[float, float] | None,
+        start: int,
+        stop: int,
+    ) -> np.ndarray:
+        data = np.asarray(emb[start:stop], dtype=np.float32)
+        if size_stats is None:
+            return data
+        size_feature = self._normalized_size_feature(sizes[start:stop], size_stats)
+        return np.concatenate([data, size_feature], axis=1)
+
+    def _normalized_size_feature(
+        self, values: np.ndarray, size_stats: tuple[float, float]
+    ) -> np.ndarray:
+        mean, std = size_stats
+        feature = np.asarray(values, dtype=np.float32).reshape(-1, 1)
+        feature = (feature - mean) / std
+        feature *= float(self.cfg.size_feature_weight)
+        return feature
+
+    @staticmethod
+    def _size_stats(sizes: np.ndarray) -> tuple[float, float]:
+        mean = float(np.mean(sizes, dtype=np.float64))
+        std = float(np.std(sizes, dtype=np.float64))
+        if std < 1e-6:
+            std = 1.0
+        return mean, std
 
     @staticmethod
     def _load_meta(meta_path: Path) -> dict:
@@ -66,6 +169,48 @@ class UMAPReducer:
             return json.load(f)
 
 
+class _ArrayContext:
+    def __init__(self, array: np.ndarray) -> None:
+        self.array = array
+
+    def __enter__(self) -> np.ndarray:
+        return self.array
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        return None
+
+
+class _TemporaryInputMemmap:
+    def __init__(self, shape: tuple[int, int], temp_dir: Path, fill) -> None:
+        self.shape = shape
+        self.temp_dir = temp_dir
+        self.fill = fill
+        self._tmp = None
+        self._array = None
+
+    def __enter__(self) -> np.memmap:
+        self._tmp = tempfile.NamedTemporaryFile(
+            prefix="umap_input_",
+            suffix=".dat",
+            dir=self.temp_dir,
+        )
+        self._array = np.memmap(
+            self._tmp.name,
+            mode="w+",
+            dtype=np.float32,
+            shape=self.shape,
+        )
+        self.fill(self._array)
+        return self._array
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        if self._array is not None:
+            self._array.flush()
+        self._array = None
+        if self._tmp is not None:
+            self._tmp.close()
+
+
 class HDBSCANClusterer:
     def __init__(self, cfg: PipelineConfig) -> None:
         self.cfg = cfg
@@ -73,7 +218,41 @@ class HDBSCANClusterer:
     def fit(self, umap_path: Path) -> ClusterResult:
         import hdbscan
 
-        data = np.load(umap_path)
+        data = np.load(umap_path, mmap_mode="r")
+        if data.ndim != 2:
+            raise ValueError(f"umap.npy must be 2D, got shape={data.shape}")
+        fit_sample_size = self.cfg.hdbscan_fit_sample_size
+        if fit_sample_size is not None and data.shape[0] > fit_sample_size:
+            return self._fit_sample_predict_all(hdbscan, data, fit_sample_size)
+        data = np.asarray(data, dtype=np.float32)
+        clusterer = hdbscan.HDBSCAN(
+            min_cluster_size=self.cfg.hdbscan_min_cluster_size,
+            min_samples=self.cfg.hdb_min_samples,
+            metric=self.cfg.hdb_metric,
+            cluster_selection_method=self.cfg.hdb_cluster_selection_method,
+            cluster_selection_epsilon=self.cfg.hdb_cluster_selection_epsilon,
+            allow_single_cluster=self.cfg.hdb_allow_single_cluster,
+            approx_min_span_tree=True,
+            prediction_data=False,
+            core_dist_n_jobs=self.cfg.hdbscan_core_dist_n_jobs or 1,
+        )
+        labels = clusterer.fit_predict(data)
+        probabilities = getattr(clusterer, "probabilities_", None)
+        outlier_scores = getattr(clusterer, "outlier_scores_", None)
+        return ClusterResult(
+            labels=labels,
+            probabilities=probabilities,
+            outlier_scores=outlier_scores,
+            exemplars=None,
+        )
+
+    def _fit_sample_predict_all(
+        self, hdbscan, data: np.ndarray, sample_size: int
+    ) -> ClusterResult:
+        n = data.shape[0]
+        rng = np.random.default_rng(42)
+        sample_idx = np.sort(rng.choice(n, size=sample_size, replace=False))
+        sample = np.asarray(data[sample_idx], dtype=np.float32)
         clusterer = hdbscan.HDBSCAN(
             min_cluster_size=self.cfg.hdbscan_min_cluster_size,
             min_samples=self.cfg.hdb_min_samples,
@@ -83,23 +262,25 @@ class HDBSCANClusterer:
             allow_single_cluster=self.cfg.hdb_allow_single_cluster,
             approx_min_span_tree=True,
             prediction_data=True,
-            core_dist_n_jobs=os.cpu_count() or 1,
+            core_dist_n_jobs=self.cfg.hdbscan_core_dist_n_jobs or 1,
         )
-        labels = clusterer.fit_predict(data)
-        probabilities = getattr(clusterer, "probabilities_", None)
-        outlier_scores = getattr(clusterer, "outlier_scores_", None)
-        exemplars = None
-        try:
-            exemplar_points = clusterer.exemplars_
-        except Exception:
-            exemplar_points = None
-        if exemplar_points is not None:
-            exemplars = self._build_exemplar_mask(data, exemplar_points)
+        clusterer.fit(sample)
+        labels = np.empty(n, dtype=np.int64)
+        probabilities = np.empty(n, dtype=np.float32)
+        batch_size = int(self.cfg.hdbscan_predict_batch_size)
+        for start in range(0, n, batch_size):
+            stop = min(start + batch_size, n)
+            batch = np.asarray(data[start:stop], dtype=np.float32)
+            batch_labels, batch_probabilities = hdbscan.approximate_predict(
+                clusterer, batch
+            )
+            labels[start:stop] = batch_labels
+            probabilities[start:stop] = batch_probabilities
         return ClusterResult(
             labels=labels,
             probabilities=probabilities,
-            outlier_scores=outlier_scores,
-            exemplars=exemplars,
+            outlier_scores=None,
+            exemplars=None,
         )
 
     @staticmethod

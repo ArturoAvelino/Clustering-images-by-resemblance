@@ -611,11 +611,16 @@ most important fields are:
 - `umap_neighbors` (default `30`)
 - `umap_min_dist` (default `0.0`)
 - `umap_metric` (default `cosine`)
+- `umap_fit_sample_size` (optional low-memory mode for very large datasets)
+- `umap_transform_batch_size` (default `100000`; used with `umap_fit_sample_size`)
 - `hdbscan_min_cluster_size`
 - `hdb_min_samples` (default `10`)
 - `hdb_cluster_selection_method` (default `eom`; allowed values: `eom`, `leaf`)
 - `hdb_cluster_selection_epsilon` (default `0.0`; larger values merge nearby HDBSCAN clusters)
 - `hdb_allow_single_cluster` (default `false`)
+- `hdbscan_fit_sample_size` (optional low-memory mode for very large datasets)
+- `hdbscan_predict_batch_size` (default `100000`; used with `hdbscan_fit_sample_size`)
+- `hdbscan_core_dist_n_jobs` (default `1`; lower values reduce RAM spikes)
 - `write_dimreduction_vector` (default `true`, writes the UMAP vector to `clusters.csv`)
 - `write_richness_file` (default `false`, writes `richness.csv` after `clusters.csv`)
 - `two_pass` or `fast_tune` (recommended: `false`)
@@ -667,6 +672,39 @@ the DINOv2 embedding vectors; HDBSCAN operates on the UMAP-reduced vectors.
   because it focuses on angular similarity. `euclidean` can work but may be more
   sensitive to embedding norm; only switch if you know your embeddings are
   normalized or you have a clear reason.
+- `umap_fit_sample_size`: Optional low-memory mode for very large datasets. When
+  unset, UMAP is fitted on every image embedding, which gives the most direct
+  result but can require a large amount of RAM because UMAP must build a
+  nearest-neighbor graph over the full dataset. When this value is set and the
+  dataset has more rows than the value, the pipeline randomly samples that many
+  embeddings, fits UMAP only on the sample, and then transforms all embeddings
+  through the fitted reducer in batches. This changes the result: it is an
+  approximate projection anchored by the sampled images, not an exact full-data
+  UMAP fit. Use it when a full UMAP run is killed by memory pressure, swap usage,
+  or the operating system after the cached DINOv2 files have already been
+  produced. Leave it unset for small and medium datasets that fit comfortably in
+  RAM, for final benchmark runs where exact full-data UMAP is required, or when
+  you need maximum sensitivity to rare small groups.
+
+  Choose the value as the largest sample that fits comfortably in memory and
+  still represents the dataset's diversity. Practical starting points are
+  `100000-250000` on constrained machines, `500000` on a 64 GB machine, and
+  `1000000` or more only when there is enough RAM and runtime budget. For a
+  15 million image dataset on 64 GB RAM, use the dedicated subsection below,
+  which starts more conservatively. If the run succeeds but visually important
+  rare clusters are missing or over-merged, increase the sample size if memory
+  allows. The sample is deterministic (`random_state=42`), so repeated runs with
+  the same inputs and settings should select the same rows.
+- `umap_transform_batch_size`: Number of full-dataset rows transformed at a time
+  after UMAP has been fitted on `umap_fit_sample_size`. This setting does not
+  control how much data UMAP uses to learn the manifold; it controls the size of
+  each transform batch written to `umap.npy`. Larger batches can be faster
+  because there is less Python overhead, but they hold more temporary `float32`
+  data in RAM. Smaller batches reduce peak memory at the cost of more batches and
+  longer runtime. The default is `100000`, which is a reasonable starting point
+  for large runs. If memory is still tight during the transform phase, reduce it
+  to `50000`, `25000`, or `10000`. If memory is stable and the transform phase is
+  slow, increase it to `200000` or `500000`.
 - `hdbscan_min_cluster_size`: Minimum cluster size HDBSCAN will consider. Smaller
   values yield more (and smaller) clusters; larger values merge smaller groups
   into noise or larger clusters. Set this to roughly the smallest cluster size
@@ -691,6 +729,178 @@ the DINOv2 embedding vectors; HDBSCAN operates on the UMAP-reduced vectors.
 - `hdb_allow_single_cluster`: Allows HDBSCAN to return a single non-noise
   cluster when the density tree supports it. Leave this `false` for normal
   discovery runs unless you expect one dominant group.
+- `hdbscan_fit_sample_size`: Optional low-memory mode for the HDBSCAN fitting
+  stage. When unset, HDBSCAN is fitted on every row in `umap.npy`. That is the
+  standard behavior: every reduced vector contributes to the density tree that
+  defines the final clusters. It is also the most memory-hungry behavior,
+  especially when `umap.npy` contains millions of rows.
+
+  When `hdbscan_fit_sample_size` is set and the UMAP output has more rows than
+  that value, the pipeline uses a different two-step strategy. First, it selects
+  a deterministic random sample of `hdbscan_fit_sample_size` rows from
+  `umap.npy` and fits HDBSCAN only on that sample. Second, it uses HDBSCAN's
+  approximate prediction logic to assign every row in the full dataset to the
+  clusters learned from the sample. The final `clusters.csv` still contains one
+  row per image, but the cluster structure is learned from the sample rather
+  than from all images at once.
+
+  This setting reduces peak RAM because the expensive HDBSCAN fit sees only the
+  sampled rows. It is useful when UMAP has completed successfully but HDBSCAN is
+  killed by the operating system, grows into swap, or cannot finish on the
+  available RAM. It is especially useful in resume modes such as
+  `compute: only-clustering` or `compute: only-dimreduction-and-clustering`,
+  where the cached `umap.npy` or DINOv2 artifacts already exist and the goal is
+  to finish clustering without recomputing earlier stages.
+
+  The tradeoff is that this is approximate clustering. Clusters that are absent
+  from the sample, weakly represented in the sample, or much smaller than the
+  sample's resolution may be missed, merged into a nearby sampled cluster, or
+  assigned as noise. Larger, common, well-separated groups are more likely to be
+  preserved. Use a larger sample when rare clusters matter, when clusters have
+  subtle boundaries, or when the first sampled run produces too much noise or
+  overly broad clusters. Use a smaller sample when the fit still exceeds memory
+  or when you mainly need a coarse first pass over a massive dataset.
+
+  Start with the largest value that fits comfortably in memory. Practical
+  starting points are `100000-250000` on constrained machines and `500000` on a
+  machine with more memory headroom. For a 15 million image dataset on 64 GB RAM,
+  use the dedicated subsection below, which starts more conservatively. If the
+  result is too coarse, contains too much noise, or misses expected smaller
+  clusters, increase the sample size if memory allows. The value must be larger
+  than `hdbscan_min_cluster_size`; in practice, it should be much larger than
+  the smallest cluster you want HDBSCAN to learn.
+
+  This setting works together with `hdbscan_predict_batch_size`. The fit sample
+  size controls how many rows are used to learn clusters and therefore affects
+  clustering quality, memory, and runtime. The prediction batch size controls how
+  many full-dataset rows are assigned at a time after fitting and mostly affects
+  memory and speed during the assignment phase.
+- `hdbscan_predict_batch_size`: Number of UMAP rows assigned at a time when
+  `hdbscan_fit_sample_size` is enabled. It is used only for the approximate
+  assignment phase after HDBSCAN has been fitted on the sample. It does not
+  change cluster structure directly; it changes peak memory and runtime while
+  applying `approximate_predict` to the full dataset. The default is `100000`.
+  Lower it to `50000`, `25000`, or `10000` if the prediction phase still causes
+  RAM spikes. Raise it to `200000` or more if memory is stable and prediction is
+  dominated by batch overhead.
+- `hdbscan_core_dist_n_jobs`: Number of worker threads HDBSCAN may use while
+  computing core distances during fitting. Higher values can speed up HDBSCAN,
+  but each worker can increase peak memory. The default is `1` because large
+  datasets are usually memory-bound rather than CPU-bound. Keep it at `1` on
+  64 GB machines or whenever the process is killed unexpectedly. Increase it
+  gradually, for example to `2` or `4`, only after confirming that the fit has
+  plenty of unused RAM. Avoid setting it to the full CPU count on very large
+  datasets unless the machine has correspondingly large memory headroom.
+
+For very large cached reruns, a conservative starting configuration is:
+
+```yaml
+compute: "only-dimreduction-and-clustering"
+umap_fit_sample_size: 500000
+umap_transform_batch_size: 100000
+hdbscan_fit_sample_size: 500000
+hdbscan_predict_batch_size: 100000
+hdbscan_core_dist_n_jobs: 1
+write_dimreduction_vector: false
+subclustering: false
+```
+
+If this still exceeds available memory, reduce the two sample sizes first, then
+reduce the batch sizes. If it succeeds and the results are too coarse, increase
+the sample sizes before increasing batch sizes. Batch sizes mostly affect memory
+and speed; sample sizes affect both memory and clustering quality.
+
+#### Suggested settings for 15 million images on a 64 GB RAM computer
+
+This subsection is specifically for the scenario where the dataset has about
+15 million images, the machine has 64 GB of RAM, and the DINOv2 artifacts have
+already been computed. In that case, use
+`compute: "only-dimreduction-and-clustering"` so the pipeline reuses the existing
+`sizes.npy`, `images.txt`, `embeddings.json`, and `embeddings.dat` files and runs
+only UMAP plus HDBSCAN.
+
+Start with this conservative configuration:
+
+```yaml
+compute: "only-dimreduction-and-clustering"
+
+dino_files: "/path/to/existing/dino_artifacts"
+output_dir: "/path/to/output/umap_hdbscan_15m_lowmem"
+
+size_feature_weight: 0.0
+
+umap_dim: 30
+umap_neighbors: 30
+umap_min_dist: 0.0
+umap_metric: "cosine"
+
+umap_fit_sample_size: 250000
+umap_transform_batch_size: 50000
+
+hdbscan_min_cluster_size: 500
+hdb_min_samples: 50
+hdb_metric: "euclidean"
+hdb_cluster_selection_method: "eom"
+hdb_cluster_selection_epsilon: 0.0
+hdb_allow_single_cluster: false
+
+hdbscan_fit_sample_size: 250000
+hdbscan_predict_batch_size: 50000
+hdbscan_core_dist_n_jobs: 1
+
+write_dimreduction_vector: false
+write_richness_file: false
+
+subclustering: false
+merge_noise_subclusters: false
+```
+
+The first run should favor finishing successfully over preserving every possible
+fine-grained cluster. Starting both `umap_fit_sample_size` and
+`hdbscan_fit_sample_size` at `250000` keeps the expensive fitting steps smaller
+than a `500000` sample, which is safer on a 64 GB machine because UMAP and
+HDBSCAN allocate internal structures beyond the raw arrays. If the run succeeds
+and the result is too coarse, rerun with:
+
+```yaml
+umap_fit_sample_size: 500000
+hdbscan_fit_sample_size: 500000
+```
+
+Keep the batch sizes at `50000` for the first attempt:
+
+```yaml
+umap_transform_batch_size: 50000
+hdbscan_predict_batch_size: 50000
+```
+
+These batch sizes mostly affect memory spikes and speed. They do not usually
+improve clustering quality. If RAM usage is stable and well below the machine's
+limit, increase them to `100000` to reduce batch overhead. If the process is
+still killed during transform or prediction, reduce them to `25000` or `10000`.
+
+Keep `hdbscan_core_dist_n_jobs: 1` for this machine. HDBSCAN may run faster with
+more workers, but more workers can also create RAM spikes. On a 64 GB computer
+with 15 million rows, HDBSCAN is usually memory-bound, so increasing workers is
+risky until a single-worker run has completed and memory usage has been observed.
+
+Set `write_dimreduction_vector: false` for this scale. Writing the UMAP vector
+into every `clusters.csv` row creates a very large CSV and adds substantial I/O.
+The numeric UMAP vectors are already stored in `umap.npy`, so the CSV column is
+usually unnecessary for a 15 million image run.
+
+Set `subclustering: false` for the first top-level run. Automatic subclustering
+can launch additional UMAP and HDBSCAN jobs on large clusters, which may exceed
+64 GB even if the top-level clustering succeeds. After the top-level run
+finishes, inspect `clusters.csv` and run targeted subclustering later on smaller
+subsets if needed.
+
+The suggested `hdbscan_min_cluster_size: 500` and `hdb_min_samples: 50` are more
+conservative than the template defaults. With 15 million images,
+`hdbscan_min_cluster_size: 25` is likely to produce many tiny clusters and more
+unstable density structure. If you need finer clusters after the first
+successful run, try `hdbscan_min_cluster_size: 250` with `hdb_min_samples: 25`,
+or `hdbscan_min_cluster_size: 100` with `hdb_min_samples: 10`.
 
 Size filtering is applied when `images.txt` is generated. If you change the size
 range after a run, delete `images.txt` or rerun with `--force` to rebuild it.

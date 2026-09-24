@@ -40,12 +40,17 @@ class PipelineConfig:
     umap_neighbors: int = 30
     umap_min_dist: float = 0.0
     umap_metric: str = "cosine"
+    umap_fit_sample_size: Optional[int] = None
+    umap_transform_batch_size: int = 100000
     hdbscan_min_cluster_size: int = 25
     hdb_min_samples: int = 10
     hdb_metric: str = "euclidean"
     hdb_cluster_selection_method: str = "eom"
     hdb_cluster_selection_epsilon: float = 0.0
     hdb_allow_single_cluster: bool = False
+    hdbscan_fit_sample_size: Optional[int] = None
+    hdbscan_predict_batch_size: int = 100000
+    hdbscan_core_dist_n_jobs: int = 1
     autocrop: bool = False
     autocrop_threshold: int = 35
     autocrop_padding: int = 2
@@ -163,12 +168,17 @@ def build_config(args) -> PipelineConfig:
         "umap_neighbors": args.umap_neighbors,
         "umap_min_dist": args.umap_min_dist,
         "umap_metric": args.umap_metric,
+        "umap_fit_sample_size": args.umap_fit_sample_size,
+        "umap_transform_batch_size": args.umap_transform_batch_size,
         "hdbscan_min_cluster_size": args.hdbscan_min_cluster_size,
         "hdb_min_samples": args.hdb_min_samples,
         "hdb_metric": args.hdb_metric,
         "hdb_cluster_selection_method": args.hdb_cluster_selection_method,
         "hdb_cluster_selection_epsilon": args.hdb_cluster_selection_epsilon,
         "hdb_allow_single_cluster": args.hdb_allow_single_cluster,
+        "hdbscan_fit_sample_size": args.hdbscan_fit_sample_size,
+        "hdbscan_predict_batch_size": args.hdbscan_predict_batch_size,
+        "hdbscan_core_dist_n_jobs": args.hdbscan_core_dist_n_jobs,
         "autocrop": args.autocrop,
         "autocrop_threshold": args.autocrop_threshold,
         "autocrop_padding": args.autocrop_padding,
@@ -284,6 +294,10 @@ def validate_config(cfg: PipelineConfig) -> None:
         errors.append("umap_neighbors must be > 2")
     if not (0.0 <= cfg.umap_min_dist <= 1.0):
         errors.append("umap_min_dist must be between 0 and 1")
+    if cfg.umap_fit_sample_size is not None and cfg.umap_fit_sample_size <= cfg.umap_neighbors:
+        errors.append("umap_fit_sample_size must be greater than umap_neighbors")
+    if cfg.umap_transform_batch_size <= 0:
+        errors.append("umap_transform_batch_size must be > 0")
     if cfg.hdbscan_min_cluster_size < 2:
         errors.append("hdbscan_min_cluster_size must be >= 2")
     if cfg.hdb_min_samples is not None and cfg.hdb_min_samples < 1:
@@ -292,6 +306,15 @@ def validate_config(cfg: PipelineConfig) -> None:
         errors.append("hdb_cluster_selection_method must be 'eom' or 'leaf'")
     if cfg.hdb_cluster_selection_epsilon < 0:
         errors.append("hdb_cluster_selection_epsilon must be >= 0")
+    if (
+        cfg.hdbscan_fit_sample_size is not None
+        and cfg.hdbscan_fit_sample_size <= cfg.hdbscan_min_cluster_size
+    ):
+        errors.append("hdbscan_fit_sample_size must be greater than hdbscan_min_cluster_size")
+    if cfg.hdbscan_predict_batch_size <= 0:
+        errors.append("hdbscan_predict_batch_size must be > 0")
+    if cfg.hdbscan_core_dist_n_jobs < 1:
+        errors.append("hdbscan_core_dist_n_jobs must be >= 1")
     if cfg.autocrop_threshold < 0:
         errors.append("autocrop_threshold must be >= 0")
     if cfg.autocrop_padding < 0:

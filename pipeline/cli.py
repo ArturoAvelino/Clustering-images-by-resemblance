@@ -78,6 +78,19 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
     parser.add_argument("--umap-neighbors", type=int)
     parser.add_argument("--umap-min-dist", type=float)
     parser.add_argument("--umap-metric")
+    parser.add_argument(
+        "--umap-fit-sample-size",
+        type=int,
+        help=(
+            "Fit UMAP on at most this many sampled rows, then transform all rows "
+            "in batches. Use for very large datasets that cannot fit exact UMAP in RAM."
+        ),
+    )
+    parser.add_argument(
+        "--umap-transform-batch-size",
+        type=int,
+        help="Rows per UMAP transform batch when --umap-fit-sample-size is used.",
+    )
     parser.add_argument("--hdbscan-min-cluster-size", type=int)
     parser.add_argument("--hdb-min-cluster-size", dest="hdbscan_min_cluster_size", type=int)
     parser.add_argument("--hdb-min-samples", type=int)
@@ -105,6 +118,24 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
         dest="hdb_allow_single_cluster",
         action="store_false",
         help="Disallow single-cluster HDBSCAN results. Default.",
+    )
+    parser.add_argument(
+        "--hdbscan-fit-sample-size",
+        type=int,
+        help=(
+            "Fit HDBSCAN on at most this many sampled UMAP rows, then assign all "
+            "rows with approximate_predict in batches."
+        ),
+    )
+    parser.add_argument(
+        "--hdbscan-predict-batch-size",
+        type=int,
+        help="Rows per approximate HDBSCAN prediction batch.",
+    )
+    parser.add_argument(
+        "--hdbscan-core-dist-n-jobs",
+        type=int,
+        help="Number of HDBSCAN core-distance workers. Lower values reduce RAM spikes.",
     )
     autocrop = parser.add_mutually_exclusive_group()
     autocrop.add_argument("--autocrop", dest="autocrop", action="store_true", default=None)

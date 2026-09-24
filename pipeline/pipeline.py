@@ -376,7 +376,9 @@ def run_auto_subclustering(
             _log_timing(log_path, hdb_msg)
 
         dim_reduction = (
-            np.load(sub_paths.umap_path) if cfg.write_dimreduction_vector else None
+            np.load(sub_paths.umap_path, mmap_mode="r")
+            if cfg.write_dimreduction_vector
+            else None
         )
         clusterer.write_csv(
             sub_paths.csv_path,
@@ -789,7 +791,9 @@ def run_pipeline(cfg: PipelineConfig) -> Path:
         if uncertain_idx.size == 0 or uncertain_idx.size < cfg.hdbscan_min_cluster_size:
             final_csv = cfg.output_dir / "clusters.csv"
             pass1_umap = (
-                np.load(pass1_paths.umap_path) if cfg.write_dimreduction_vector else None
+                np.load(pass1_paths.umap_path, mmap_mode="r")
+                if cfg.write_dimreduction_vector
+                else None
             )
             HDBSCANClusterer.write_csv(
                 final_csv,
@@ -818,8 +822,8 @@ def run_pipeline(cfg: PipelineConfig) -> Path:
         merged_result = merge_results(pass1_result, uncertain_idx, pass2_result)
         merged_umap = None
         if cfg.write_dimreduction_vector:
-            pass1_umap = np.load(pass1_paths.umap_path)
-            pass2_umap = np.load(pass2_paths.umap_path)
+            pass1_umap = np.load(pass1_paths.umap_path, mmap_mode="r")
+            pass2_umap = np.load(pass2_paths.umap_path, mmap_mode="r")
             merged_umap = merge_dim_reduction(
                 pass1_umap, uncertain_idx, pass2_umap, len(rel_paths)
             )
@@ -927,7 +931,11 @@ def run_dimreduction_and_clustering(
     _log_timing(log_path, hdb_msg)
 
     t0 = time.perf_counter()
-    dim_reduction = np.load(output_paths.umap_path) if cfg.write_dimreduction_vector else None
+    dim_reduction = (
+        np.load(output_paths.umap_path, mmap_mode="r")
+        if cfg.write_dimreduction_vector
+        else None
+    )
     clusterer.write_csv(
         output_paths.csv_path,
         rel_paths,
@@ -988,7 +996,7 @@ def run_clustering_only(cfg: PipelineConfig, log_path: Path, total_start: float)
         rel_paths = [line.strip() for line in f if line.strip()]
     if not rel_paths:
         raise ValueError(f"No image paths found in {input_paths.index_path}")
-    umap_data = np.load(input_paths.umap_path)
+    umap_data = np.load(input_paths.umap_path, mmap_mode="r")
     if umap_data.ndim != 2:
         raise ValueError(f"umap.npy must be 2D, got shape={umap_data.shape}")
     if umap_data.shape[0] < len(rel_paths):
