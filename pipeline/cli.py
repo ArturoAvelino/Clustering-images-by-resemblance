@@ -89,7 +89,7 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
     parser.add_argument(
         "--umap-transform-batch-size",
         type=int,
-        help="Rows per UMAP transform batch when --umap-fit-sample-size is used.",
+        help="Rows per UMAP transform batch when --umap-fit-sample-size is used. Default: 25000.",
     )
     parser.add_argument("--hdbscan-min-cluster-size", type=int)
     parser.add_argument("--hdb-min-cluster-size", dest="hdbscan_min_cluster_size", type=int)
@@ -130,7 +130,7 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
     parser.add_argument(
         "--hdbscan-predict-batch-size",
         type=int,
-        help="Rows per approximate HDBSCAN prediction batch.",
+        help="Rows per approximate HDBSCAN prediction batch. Default: 25000.",
     )
     parser.add_argument(
         "--hdbscan-core-dist-n-jobs",

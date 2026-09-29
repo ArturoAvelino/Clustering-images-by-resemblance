@@ -612,14 +612,14 @@ most important fields are:
 - `umap_min_dist` (default `0.0`)
 - `umap_metric` (default `cosine`)
 - `umap_fit_sample_size` (optional low-memory mode for very large datasets)
-- `umap_transform_batch_size` (default `100000`; used with `umap_fit_sample_size`)
+- `umap_transform_batch_size` (default `25000`; used with `umap_fit_sample_size`)
 - `hdbscan_min_cluster_size`
 - `hdb_min_samples` (default `10`)
 - `hdb_cluster_selection_method` (default `eom`; allowed values: `eom`, `leaf`)
 - `hdb_cluster_selection_epsilon` (default `0.0`; larger values merge nearby HDBSCAN clusters)
 - `hdb_allow_single_cluster` (default `false`)
 - `hdbscan_fit_sample_size` (optional low-memory mode for very large datasets)
-- `hdbscan_predict_batch_size` (default `100000`; used with `hdbscan_fit_sample_size`)
+- `hdbscan_predict_batch_size` (default `25000`; used with `hdbscan_fit_sample_size`)
 - `hdbscan_core_dist_n_jobs` (default `1`; lower values reduce RAM spikes)
 - `write_dimreduction_vector` (default `true`, writes the UMAP vector to `clusters.csv`)
 - `write_richness_file` (default `false`, writes `richness.csv` after `clusters.csv`)
@@ -701,7 +701,7 @@ the DINOv2 embedding vectors; HDBSCAN operates on the UMAP-reduced vectors.
   each transform batch written to `umap.npy`. Larger batches can be faster
   because there is less Python overhead, but they hold more temporary `float32`
   data in RAM. Smaller batches reduce peak memory at the cost of more batches and
-  longer runtime. The default is `100000`, which is a reasonable starting point
+  longer runtime. The default is `25000`, which is a conservative starting point
   for large runs. If memory is still tight during the transform phase, reduce it
   to `50000`, `25000`, or `10000`. If memory is stable and the transform phase is
   slow, increase it to `200000` or `500000`.
@@ -779,7 +779,7 @@ the DINOv2 embedding vectors; HDBSCAN operates on the UMAP-reduced vectors.
   `hdbscan_fit_sample_size` is enabled. It is used only for the approximate
   assignment phase after HDBSCAN has been fitted on the sample. It does not
   change cluster structure directly; it changes peak memory and runtime while
-  applying `approximate_predict` to the full dataset. The default is `100000`.
+  applying `approximate_predict` to the full dataset. The default is `25000`.
   Lower it to `50000`, `25000`, or `10000` if the prediction phase still causes
   RAM spikes. Raise it to `200000` or more if memory is stable and prediction is
   dominated by batch overhead.
@@ -797,9 +797,9 @@ For very large cached reruns, a conservative starting configuration is:
 ```yaml
 compute: "only-dimreduction-and-clustering"
 umap_fit_sample_size: 500000
-umap_transform_batch_size: 100000
+umap_transform_batch_size: 25000
 hdbscan_fit_sample_size: 500000
-hdbscan_predict_batch_size: 100000
+hdbscan_predict_batch_size: 25000
 hdbscan_core_dist_n_jobs: 1
 write_dimreduction_vector: false
 subclustering: false

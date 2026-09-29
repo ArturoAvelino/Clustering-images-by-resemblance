@@ -161,13 +161,15 @@ class DINOv2Embedder:
             for batch_idx, images in enumerate(loader):
                 images = images.to(self.device, non_blocking=True)
                 with torch.inference_mode():
-                    feats = self._forward_features(images).detach().cpu().numpy()
-                if dtype == np.float16:
-                    feats = feats.astype(np.float16)
+                    feats_tensor = self._forward_features(images).detach()
+                    if dtype == np.float16:
+                        feats_tensor = feats_tensor.to(torch.float16)
+                    feats = feats_tensor.cpu().numpy()
                 bsz = feats.shape[0]
                 emb[written : written + bsz] = feats
                 written += bsz
                 pbar.update(bsz)
+                del images, feats_tensor, feats
                 if written % max(1000, self.cfg.batch_size * 10) == 0:
                     elapsed = time.time() - start
                     rate = written / max(elapsed, 1e-6)

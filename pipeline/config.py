@@ -41,7 +41,7 @@ class PipelineConfig:
     umap_min_dist: float = 0.0
     umap_metric: str = "cosine"
     umap_fit_sample_size: Optional[int] = None
-    umap_transform_batch_size: int = 100000
+    umap_transform_batch_size: int = 25000
     hdbscan_min_cluster_size: int = 25
     hdb_min_samples: int = 10
     hdb_metric: str = "euclidean"
@@ -49,7 +49,7 @@ class PipelineConfig:
     hdb_cluster_selection_epsilon: float = 0.0
     hdb_allow_single_cluster: bool = False
     hdbscan_fit_sample_size: Optional[int] = None
-    hdbscan_predict_batch_size: int = 100000
+    hdbscan_predict_batch_size: int = 25000
     hdbscan_core_dist_n_jobs: int = 1
     autocrop: bool = False
     autocrop_threshold: int = 35

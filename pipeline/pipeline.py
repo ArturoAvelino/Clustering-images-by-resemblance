@@ -603,7 +603,9 @@ def run_stage(
         if write_csv:
             t0 = time.perf_counter()
             dim_reduction = (
-                np.load(paths.umap_path) if cfg.write_dimreduction_vector else None
+                np.load(paths.umap_path, mmap_mode="r")
+                if cfg.write_dimreduction_vector
+                else None
             )
             clusterer.write_csv(
                 paths.csv_path,
@@ -675,21 +677,34 @@ def merge_optional_array(
     return merged
 
 
-def merge_dim_reduction(
+def merge_dim_reduction_to_memmap(
     base: np.ndarray,
     subset_indices: np.ndarray,
     subset: np.ndarray,
     length: int,
-) -> List[List[float]]:
+) -> np.ndarray:
     if base.ndim != 2 or subset.ndim != 2:
         raise ValueError("dim_reduction arrays must be 2D.")
     if base.shape[0] != length:
         raise ValueError("Base dim_reduction length does not match labels length.")
     if subset.shape[0] != subset_indices.shape[0]:
         raise ValueError("Subset dim_reduction length does not match subset indices.")
-    merged = [row.tolist() for row in base]
-    for out_idx, base_idx in enumerate(subset_indices.tolist()):
-        merged[base_idx] = subset[out_idx].tolist()
+    if base.shape[1] != subset.shape[1]:
+        raise ValueError("Base and subset dim_reduction arrays must have the same width.")
+    output_path = Path(str(subset.filename)).with_name("merged_umap.npy")
+    merged = np.lib.format.open_memmap(
+        output_path,
+        mode="w+",
+        dtype=np.float32,
+        shape=(length, base.shape[1]),
+    )
+    batch_size = 100000
+    for start in range(0, length, batch_size):
+        stop = min(start + batch_size, length)
+        merged[start:stop] = base[start:stop]
+    for out_idx, base_idx in enumerate(subset_indices):
+        merged[int(base_idx)] = subset[out_idx]
+    merged.flush()
     return merged
 
 
@@ -824,7 +839,7 @@ def run_pipeline(cfg: PipelineConfig) -> Path:
         if cfg.write_dimreduction_vector:
             pass1_umap = np.load(pass1_paths.umap_path, mmap_mode="r")
             pass2_umap = np.load(pass2_paths.umap_path, mmap_mode="r")
-            merged_umap = merge_dim_reduction(
+            merged_umap = merge_dim_reduction_to_memmap(
                 pass1_umap, uncertain_idx, pass2_umap, len(rel_paths)
             )
         final_csv = cfg.output_dir / "clusters.csv"

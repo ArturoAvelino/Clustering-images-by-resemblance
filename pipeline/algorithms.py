@@ -54,7 +54,15 @@ class UMAPReducer:
 
         with self._umap_input_memmap(emb, sizes, size_stats, out_path.parent) as data:
             low = reducer.fit_transform(data)
-        np.save(out_path, low.astype(np.float32, copy=False))
+        out = np.lib.format.open_memmap(
+            out_path,
+            mode="w+",
+            dtype=np.float32,
+            shape=low.shape,
+        )
+        out[:] = low.astype(np.float32, copy=False)
+        out.flush()
+        del out, low
 
     def _fit_sample_transform_all(
         self,
@@ -265,7 +273,7 @@ class HDBSCANClusterer:
             core_dist_n_jobs=self.cfg.hdbscan_core_dist_n_jobs or 1,
         )
         clusterer.fit(sample)
-        labels = np.empty(n, dtype=np.int64)
+        labels = np.empty(n, dtype=np.int32)
         probabilities = np.empty(n, dtype=np.float32)
         batch_size = int(self.cfg.hdbscan_predict_batch_size)
         for start in range(0, n, batch_size):
@@ -274,7 +282,7 @@ class HDBSCANClusterer:
             batch_labels, batch_probabilities = hdbscan.approximate_predict(
                 clusterer, batch
             )
-            labels[start:stop] = batch_labels
+            labels[start:stop] = batch_labels.astype(np.int32, copy=False)
             probabilities[start:stop] = batch_probabilities
         return ClusterResult(
             labels=labels,

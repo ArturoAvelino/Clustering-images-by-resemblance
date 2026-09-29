@@ -16,8 +16,9 @@ dino_files: "/path/to/output"
 # Directory where the new outputs (umap.npy, clusters.csv, images.txt) will be written.
 output_dir: "/path/to/output/umap_hdbscan_only"
 
-# Weight applied to the size feature when clustering.
-# 0.0 disables the size feature; higher values make size more influential.
+# Weight applied to the cached size feature in UMAP.
+# 0.0 keeps the feature out of UMAP; use a previously chosen positive weight
+# only if image size is intentionally meant to affect neighborhoods.
 size_feature_weight: 0.0
 
 # Target dimensionality-reduction from UMAP.
@@ -32,16 +33,16 @@ umap_min_dist: 0.0
 # UMAP distance metric.
 umap_metric: "cosine"
 
-# Optional low-memory mode for very large datasets: fit UMAP on a sampled
-# subset, then transform every embedding in batches.
-# umap_fit_sample_size: 500000
-umap_transform_batch_size: 100000
+# Large-dataset mode: fit UMAP on a deterministic sample, then transform all
+# cached embeddings in batches. A smaller sample and batch reduce peak RAM.
+umap_fit_sample_size: 250000
+umap_transform_batch_size: 25000
 
 # Minimum cluster size for HDBSCAN (smaller values produce more clusters).
-hdbscan_min_cluster_size: 25
+hdbscan_min_cluster_size: 500
 
 # HDBSCAN minimum samples (higher values produce more conservative clusters).
-hdb_min_samples: 10
+hdb_min_samples: 50
 
 # HDBSCAN distance metric.
 hdb_metric: "euclidean"
@@ -51,20 +52,20 @@ hdb_cluster_selection_method: "eom"
 hdb_cluster_selection_epsilon: 0.0
 hdb_allow_single_cluster: false
 
-# Optional low-memory mode for very large datasets: fit HDBSCAN on a sampled
-# subset of UMAP rows, then assign every row in batches with approximate_predict.
-# hdbscan_fit_sample_size: 500000
-hdbscan_predict_batch_size: 100000
+# Fit HDBSCAN on a sample of UMAP rows, then assign every row in batches with
+# approximate_predict. Assignments cover all rows but are sample-fitted.
+hdbscan_fit_sample_size: 250000
+hdbscan_predict_batch_size: 25000
 hdbscan_core_dist_n_jobs: 1
 
-# Write the UMAP vector to the dim_reduction column in clusters.csv.
-write_dimreduction_vector: true
+# Keep the 15-million-row CSV smaller; vectors remain available in umap.npy.
+write_dimreduction_vector: false
 
 # Write richness.csv after clusters.csv is created.
 write_richness_file: false
 
-# Automatic subclustering settings.
-subclustering: true
+# Disable automatic per-cluster UMAP/HDBSCAN jobs for the first full-scale run.
+subclustering: false
 min_for_subclustering: 1000
 subclustering_umap_dim: 60
 subclustering_umap_neighbors: 30
