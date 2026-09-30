@@ -16,5 +16,6 @@ hdb_min_samples: 10
 size_feature_weight: 1.0
 write_dimreduction_vector: true
 write_richness_file: false
+memory_refresh_interval_seconds: 60
 # Enable if you also want automatic subdivision of clusters larger than 1000.
 subclustering: false

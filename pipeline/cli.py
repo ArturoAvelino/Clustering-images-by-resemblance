@@ -152,6 +152,11 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
         help="Background RGB color as R,G,B (default tuned for blue backgrounds)",
     )
     parser.add_argument("--size-feature-weight", type=float)
+    parser.add_argument(
+        "--memory-refresh-interval-seconds",
+        type=int,
+        help="Seconds between pipeline RAM bar updates. Default: 60.",
+    )
     two_pass = parser.add_mutually_exclusive_group()
     two_pass.add_argument("--two-pass", dest="two_pass", action="store_true", default=None)
     two_pass.add_argument("--no-two-pass", dest="two_pass", action="store_false")

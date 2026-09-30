@@ -82,6 +82,7 @@ The code expects these Python packages to be available:
 - hdbscan
 - pillow
 - numpy
+- psutil (used for the low-frequency RAM display)
 - certifi
 
 ## Recommended installation procedure
@@ -182,6 +183,25 @@ Basic run:
 ```bash
 python clustering compute-clusters --input-dir /path/to/images --output-dir /path/to/output
 ```
+
+During a pipeline run, a `Pipeline RAM` bar shows the resident RAM used by the
+pipeline process and its child workers, along with that amount as a fraction of
+the machine's total physical RAM. It samples once when the run starts and then
+at the configured interval, which defaults to 60 seconds. Set
+`memory_refresh_interval_seconds` to a positive integer in a YAML configuration
+file, or pass `--memory-refresh-interval-seconds` on the command line. For
+example, `memory_refresh_interval_seconds: 15` refreshes every 15 seconds. The
+measurement is process memory (RSS), not
+the machine's overall memory use, and the displayed total is system RAM. RSS
+from multiple processes is summed, so shared pages can be counted more than
+once; treat the reading as an estimate of process memory.
+
+The monitor uses one lightweight background thread. It performs a process
+memory query only at the configured interval, so it does not add work to image
+batches or the clustering loops and should have negligible effect on runtime. Its
+additional memory use is limited to the thread and small monitoring objects;
+the monitor does not retain pipeline data or create a sampling history. The
+`psutil` package supplies the cross-platform process memory query.
 
 Disable automatic subclustering, or change the trigger threshold:
 
@@ -606,7 +626,8 @@ most important fields are:
 - `output_dir`
 - `dino_model` (optional local clone path)
 - `batch_size`
-- `num_workers`
+- `num_workers` (default `2`; number of subprocesses used to load and prepare
+  images during DINOv2 embedding)
 - `umap_dim`
 - `umap_neighbors` (default `30`)
 - `umap_min_dist` (default `0.0`)
@@ -623,6 +644,7 @@ most important fields are:
 - `hdbscan_core_dist_n_jobs` (default `1`; lower values reduce RAM spikes)
 - `write_dimreduction_vector` (default `true`, writes the UMAP vector to `clusters.csv`)
 - `write_richness_file` (default `false`, writes `richness.csv` after `clusters.csv`)
+- `memory_refresh_interval_seconds` (default `60`; positive integer controlling RAM bar refresh frequency)
 - `two_pass` or `fast_tune` (recommended: `false`)
 - `refine_prob_threshold` (default `0.7`; used only when `two_pass: true`)
 - `refine_include_noise` (default `true`; used only when `two_pass: true`)
@@ -630,6 +652,7 @@ most important fields are:
 - `min_for_subclustering` (default `1000`; clusters must be larger than this value)
 - `subclustering_umap_dim` / `subclustering_umap_neighbors`
 - `subclustering_hdbscan_min_cluster_size` / `subclustering_hdb_min_samples`
+
 - `subclustering_hdb_cluster_selection_method`, `subclustering_hdb_cluster_selection_epsilon`, and `subclustering_hdb_allow_single_cluster` (optional overrides; when omitted, subclustering uses the main HDBSCAN selection settings)
 - `merge_noise_subclusters` (default `false`; remaps non-noise subclusters found inside parent cluster `-1` into top-level cluster IDs)
 - `autocrop` (default: `false`)
@@ -640,6 +663,35 @@ most important fields are:
 - `compute` (use `only-dimreduction-and-clustering` to skip embedding, or `only-clustering` to skip embedding + UMAP)
 - `dino_files` (directory containing embeddings.dat, embeddings.json, sizes.npy, and images.txt)
 - `umap_files` (directory containing umap.npy and images.txt)
+
+### Choosing `num_workers`
+
+`num_workers` controls PyTorch's image-loading workers during DINOv2 embedding.
+Each worker is a subprocess that reads and prepares images so the main process
+can run model inference while more input batches are being prepared. It does
+not change the model's inference batch size or create additional model
+inference processes. The default is `2` and `0` is valid.
+
+Choose a value based on where your run spends time:
+
+- Start with `2` on a typical machine. Use `0` if multiprocessing causes
+  startup or compatibility problems, if the dataset is small, or if you want
+  the simplest behavior to diagnose a run.
+- If the CPU is busy preparing images and the model is waiting for input, try
+  increasing the value gradually. This can help when images are on fast local
+  storage and the machine has spare CPU capacity.
+- Keep the value low for external, network, or slow storage. Extra workers can
+  compete for limited disk bandwidth instead of making loading faster.
+- Each worker adds process and memory overhead. If RAM is tight, lower the
+  value; reducing `batch_size` can also reduce the memory needed for each
+  loaded batch.
+
+Worker counts are not a direct measure of CPU cores to allocate: the useful
+value depends on image decoding cost, storage speed, available CPU and RAM, and
+the batch size. Increase one or two workers at a time and compare embedding
+throughput. `fast_num_workers` optionally sets a separate worker count for the
+fast-tuning pass; if omitted, that pass uses `num_workers`. Setting
+`fast_num_workers: 0` disables subprocess loading for that pass.
 
 For white backgrounds, set `background_color` to `[255, 255, 255]` and tune
 `autocrop_threshold` if needed.
@@ -972,7 +1024,7 @@ output_csv = clustering(
     "/path/to/images",
     "/path/to/output",
     batch_size=16,
-    num_workers=2,
+    num_workers=2,  # Image-loading subprocesses for DINOv2 embedding; 0 disables them.
     umap_dim=30,
     hdbscan_min_cluster_size=25,
     two_pass=False,
@@ -1137,4 +1189,6 @@ In summary:
 ## Notes
 
 - If you see SSL errors, prefer using a local DINOv2 repo as described above.
-- For large datasets, consider lowering `batch_size` or `num_workers`.
+- For large datasets, consider lowering `batch_size` or `num_workers` if RAM is
+  constrained. Increase `num_workers` only when image loading is the bottleneck
+  and the CPU and storage can keep up.

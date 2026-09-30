@@ -19,7 +19,17 @@ class PipelineConfig:
     `two_pass` is enabled during a full run. `write_richness_file` controls
     whether the pipeline writes `richness.csv` automatically after each
     `clusters.csv`; it defaults to `False` so richness can also be generated on
-    demand from an existing clusters file.
+    demand from an existing clusters file. `memory_refresh_interval_seconds`
+    controls the pipeline RAM bar sampling frequency and defaults to 60.
+
+    `num_workers` controls the number of subprocesses used by PyTorch's image
+    DataLoader during DINOv2 embedding. Workers load and prepare image batches
+    while the main process runs the model. Zero disables subprocess loading;
+    small values (for example, 2) are a reasonable starting point. More workers
+    can help when image loading is the bottleneck and storage/CPU can keep up,
+    but can increase RAM use and slow runs on bandwidth-limited or external
+    storage. `fast_num_workers`, when set, selects the worker count for the
+    fast-tuning pass.
     """
 
     input_dir: Optional[Path] = None
@@ -70,6 +80,7 @@ class PipelineConfig:
     refine_include_noise: bool = True
     write_dimreduction_vector: bool = True
     write_richness_file: bool = False
+    memory_refresh_interval_seconds: int = 60
     force: bool = False
     torch_threads: Optional[int] = None
     classes_benchmark_file: Optional[Path] = None
@@ -196,6 +207,9 @@ def build_config(args) -> PipelineConfig:
         "refine_include_noise": args.refine_include_noise,
         "write_dimreduction_vector": args.write_dimreduction_vector,
         "write_richness_file": getattr(args, "write_richness_file", None),
+        "memory_refresh_interval_seconds": getattr(
+            args, "memory_refresh_interval_seconds", None
+        ),
         "force": args.force,
         "torch_threads": args.torch_threads,
         "classes_benchmark_file": getattr(args, "classes_benchmark_file", None),
@@ -288,6 +302,8 @@ def validate_config(cfg: PipelineConfig) -> None:
         errors.append("batch_size must be > 0")
     if cfg.num_workers < 0:
         errors.append("num_workers must be >= 0")
+    if cfg.memory_refresh_interval_seconds <= 0:
+        errors.append("memory_refresh_interval_seconds must be > 0")
     if cfg.umap_dim <= 1:
         errors.append("umap_dim must be > 1")
     if cfg.umap_neighbors <= 2:
@@ -405,5 +421,9 @@ def make_fast_config(cfg: PipelineConfig) -> PipelineConfig:
         umap_dim=cfg.fast_umap_dim,
         umap_neighbors=cfg.fast_umap_neighbors,
         batch_size=cfg.fast_batch_size or cfg.batch_size,
-        num_workers=cfg.fast_num_workers or cfg.num_workers,
+        num_workers=(
+            cfg.fast_num_workers
+            if cfg.fast_num_workers is not None
+            else cfg.num_workers
+        ),
     )

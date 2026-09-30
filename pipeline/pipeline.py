@@ -16,6 +16,7 @@ from .config import ClusterResult, PipelineConfig, StagePaths, make_fast_config
 from .data import ImageDataset, ImageIndex, compute_size_features
 from .embedding import DINOv2Embedder, ensure_deps, resolve_device
 from .model_repo import auto_model_repo
+from .memory_monitor import PipelineMemoryMonitor
 from .richness import write_richness_csv
 from .ssl_utils import configure_ssl
 from .subset import prepare_subset_cache
@@ -732,7 +733,7 @@ def merge_results(
     )
 
 
-def run_pipeline(cfg: PipelineConfig) -> Path:
+def _run_pipeline(cfg: PipelineConfig) -> Path:
     total_start = time.perf_counter()
     log_path = cfg.output_dir / "timings.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -865,6 +866,19 @@ def run_pipeline(cfg: PipelineConfig) -> Path:
         log_path=log_path,
     )
     return _finish_pipeline_run(cfg, paths.csv_path, paths, log_path, total_start)
+
+
+def run_pipeline(cfg: PipelineConfig) -> Path:
+    """Run the pipeline and report process RAM at its configured interval.
+
+    The RAM bar sums resident memory for this process and its child workers,
+    against the machine's total physical RAM. Sampling uses one background
+    thread and defaults to every 60 seconds after the initial reading.
+    """
+    with PipelineMemoryMonitor(
+        interval_seconds=cfg.memory_refresh_interval_seconds
+    ):
+        return _run_pipeline(cfg)
 
 
 def run_dimreduction_and_clustering(
@@ -1093,6 +1107,11 @@ def clustering(
     ``write_richness_file=True`` to write a sibling ``richness.csv`` after each
     ``clusters.csv`` file, including automatic subcluster outputs.
 
+    While the pipeline runs, a RAM bar reports resident memory for the
+    pipeline and its child workers. It samples immediately and then at the
+    configured ``memory_refresh_interval_seconds`` (60 seconds by default),
+    with negligible monitoring overhead.
+
     Parameters
     ----------
     input_image_dir : str | Path
@@ -1102,7 +1121,15 @@ def clustering(
     batch_size : int
         Embedding batch size (lower is safer for RAM/IO).
     num_workers : int
-        DataLoader workers (keep low for external drives).
+        Number of subprocesses that load and prepare image batches for the
+        DINOv2 embedding DataLoader. Workers overlap image I/O and preparation
+        with model inference; they do not add model-training/inference
+        processes. The default is 2. Use 0 to load images in the main process,
+        which can avoid multiprocessing overhead or issues on constrained
+        systems. Increase gradually when CPU image preparation or fast local
+        storage is the bottleneck. More workers consume additional RAM and may
+        not help with external, network, or otherwise bandwidth-limited drives.
+        `fast_num_workers` can set a separate value for fast-tuning runs.
     umap_dim : int
         Target dimensionality for UMAP.
     hdbscan_min_cluster_size : int

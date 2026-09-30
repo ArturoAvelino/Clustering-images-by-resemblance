@@ -45,6 +45,9 @@ write_dimreduction_vector: true
 # Write richness.csv after clusters.csv is created.
 write_richness_file: false
 
+# Seconds between updates to the live pipeline RAM bar. Must be a positive integer.
+memory_refresh_interval_seconds: 60
+
 # Automatic subclustering can run in this mode only when dino_files points to
 # cached DINOv2 artifacts for the same images.
 subclustering: true

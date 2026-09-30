@@ -64,6 +64,9 @@ write_dimreduction_vector: false
 # Write richness.csv after clusters.csv is created.
 write_richness_file: false
 
+# Seconds between updates to the live pipeline RAM bar. Must be a positive integer.
+memory_refresh_interval_seconds: 60
+
 # Disable automatic per-cluster UMAP/HDBSCAN jobs for the first full-scale run.
 subclustering: false
 min_for_subclustering: 1000
