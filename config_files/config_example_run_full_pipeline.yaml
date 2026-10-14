@@ -73,9 +73,11 @@ write_richness_file: false
 # Seconds between updates to the live pipeline RAM bar. Must be a positive integer.
 memory_refresh_interval_seconds: 60
 
-# Automatically subcluster any final cluster with more than this many objects.
+# Subcluster final clusters with more than the minimum and fewer than the maximum
+# number of objects. The minimum must be smaller than the maximum.
 subclustering: true
 min_for_subclustering: 1000
+max_for_subclustering: 1000000
 
 # Subclustering UMAP/HDBSCAN settings. These defaults preserve the previous
 # built-in behavior.

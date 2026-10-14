@@ -666,7 +666,9 @@ most important fields are:
 - `refine_prob_threshold` (default `0.7`; used only when `two_pass: true`)
 - `refine_include_noise` (default `true`; used only when `two_pass: true`)
 - `subclustering` (default `true`; runs automatic post-pipeline subclustering)
-- `min_for_subclustering` (default `1000`; clusters must be larger than this value)
+- `min_for_subclustering` (default `1000`; exclusive lower cluster-size limit)
+- `max_for_subclustering` (default `1000000`; exclusive upper cluster-size limit;
+  must be greater than `min_for_subclustering`)
 - `subclustering_umap_dim` / `subclustering_umap_neighbors`
 - `subclustering_hdbscan_min_cluster_size` / `subclustering_hdb_min_samples`
 
@@ -990,7 +992,10 @@ as long as it contains `umap.npy` and `images.txt`.
 Automatic subclustering runs after the final `clusters.csv` has been written and
 summarized unless `--no-subclustering` or `subclustering: false` is set. It
 checks every final cluster label, including noise label `-1`, and selects labels
-whose object count is greater than `min_for_subclustering`.
+whose object count is strictly greater than `min_for_subclustering` and strictly
+less than `max_for_subclustering`. With the defaults, clusters with 1,001 through
+999,999 objects are selected; clusters at either threshold are skipped.
+`max_for_subclustering` must always be greater than `min_for_subclustering`.
 
 Subclustering has its own configurable UMAP and HDBSCAN parameters:
 

@@ -256,7 +256,10 @@ def run_auto_subclustering(
     source_paths: StagePaths | None,
     log_path: Path | None = None,
 ) -> bool:
-    """Subcluster final clusters larger than ``cfg.min_for_subclustering``.
+    """Subcluster final clusters with sizes strictly between the configured limits.
+
+    A final cluster is selected only when its point count is greater than
+    ``cfg.min_for_subclustering`` and less than ``cfg.max_for_subclustering``.
 
     The step reuses cached DINOv2 artifacts by slicing `images.txt`,
     `embeddings.dat`, `embeddings.json`, and `sizes.npy` for each large cluster.
@@ -299,15 +302,16 @@ def run_auto_subclustering(
         return False
 
     members = _load_cluster_members(clusters_csv_path)
-    oversized = {
+    eligible = {
         label: rels
         for label, rels in members.items()
-        if len(rels) > cfg.min_for_subclustering
+        if cfg.min_for_subclustering < len(rels) < cfg.max_for_subclustering
     }
-    if not oversized:
+    if not eligible:
         msg = (
-            "[subclustering] No clusters exceed "
-            f"{cfg.min_for_subclustering} objects."
+            "[subclustering] No clusters have more than "
+            f"{cfg.min_for_subclustering} and fewer than "
+            f"{cfg.max_for_subclustering} objects."
         )
         print(msg)
         if log_path is not None:
@@ -322,10 +326,11 @@ def run_auto_subclustering(
     sub_root.mkdir(parents=True, exist_ok=True)
     print(
         "[subclustering] Running automatic subclustering for "
-        f"{len(oversized)} cluster(s) larger than {cfg.min_for_subclustering}."
+        f"{len(eligible)} cluster(s) with more than {cfg.min_for_subclustering} "
+        f"and fewer than {cfg.max_for_subclustering} objects."
     )
-    for label in sorted(oversized):
-        subset_rel_paths = oversized[label]
+    for label in sorted(eligible):
+        subset_rel_paths = eligible[label]
         missing_rels = [rel for rel in subset_rel_paths if rel not in source_index]
         if missing_rels:
             _write_skipped_filenames_csv(

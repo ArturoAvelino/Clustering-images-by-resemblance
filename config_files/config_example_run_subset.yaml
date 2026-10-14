@@ -17,5 +17,8 @@ size_feature_weight: 1.0
 write_dimreduction_vector: true
 write_richness_file: false
 memory_refresh_interval_seconds: 60
-# Enable if you also want automatic subdivision of clusters larger than 1000.
+# If enabled, automatic subdivision applies only to clusters with more than
+# min_for_subclustering and fewer than max_for_subclustering objects.
 subclustering: false
+min_for_subclustering: 1000
+max_for_subclustering: 1000000

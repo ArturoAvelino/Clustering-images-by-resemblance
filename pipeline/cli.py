@@ -224,8 +224,9 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
         action="store_true",
         default=None,
         help=(
-            "Run automatic post-pipeline subclustering for clusters larger than "
-            "--min-for-subclustering. Default: enabled."
+            "Run automatic post-pipeline subclustering for clusters whose sizes "
+            "are strictly between min_for_subclustering and max_for_subclustering. "
+            "Default: enabled."
         ),
     )
     subclustering.add_argument(
@@ -237,7 +238,11 @@ def build_parser(*, prog: Optional[str] = None, add_help: bool = True) -> argpar
     parser.add_argument(
         "--min-for-subclustering",
         type=int,
-        help="Minimum cluster size that triggers automatic subclustering. Default: 1000.",
+        help=(
+            "Lower exclusive cluster-size limit for automatic subclustering. "
+            "The upper exclusive limit is set by max_for_subclustering in the config. "
+            "Default: 1000."
+        ),
     )
     parser.add_argument(
         "--subclustering-umap-dim",

@@ -8,10 +8,10 @@ What it does
 1) Extracts DINOv2 embeddings for each image (default: 768‑dim with dinov2_vitb14).
 2) Reduces dimensionality with UMAP to preserve local neighborhoods.
 3) Clusters with HDBSCAN and writes a CSV of image_id → cluster label.
-4) By default, subclusters any final cluster with more than 1000 objects by
-   slicing cached DINOv2 artifacts and running subset UMAP/HDBSCAN. Subclustering
-   UMAP/HDBSCAN settings are configurable, and noise subclusters can optionally
-   be merged back into the top-level clusters.csv.
+4) By default, subclusters final clusters with more than 1000 and fewer than
+   1000000 objects by slicing cached DINOv2 artifacts and running subset
+   UMAP/HDBSCAN. Subclustering UMAP/HDBSCAN settings are configurable, and noise
+   subclusters can optionally be merged back into the top-level clusters.csv.
 
 Inputs
 ------
@@ -91,6 +91,8 @@ hdb_cluster_selection_method: "eom"
 hdb_cluster_selection_epsilon: 0.0
 hdb_allow_single_cluster: false
 subclustering: true
+min_for_subclustering: 1000
+max_for_subclustering: 1000000
 subclustering_umap_dim: 60
 subclustering_umap_neighbors: 30
 subclustering_hdbscan_min_cluster_size: 7
@@ -119,8 +121,9 @@ Optional modes
 - --compute only-dimreduction-and-clustering: skip embedding and reuse DINOv2 outputs.
 - --compute only-clustering: skip embedding and UMAP, reuse cached UMAP outputs.
 - --no-subclustering: skip automatic post-pipeline subclustering.
-- --min-for-subclustering: minimum final cluster size that triggers subclustering
-  (default: 1000).
+- --min-for-subclustering: exclusive lower cluster-size limit for automatic
+  subclustering (default: 1000). The exclusive upper limit is set by
+  max_for_subclustering in the configuration.
 - --merge-noise-subclusters: remap non-noise subclusters found inside parent
   cluster -1 into fresh top-level cluster IDs.
 

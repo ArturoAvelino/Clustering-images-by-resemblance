@@ -22,6 +22,11 @@ class PipelineConfig:
     demand from an existing clusters file. `memory_refresh_interval_seconds`
     controls the pipeline RAM bar sampling frequency and defaults to 60.
 
+    Automatic subclustering selects final clusters only when their point count
+    is strictly greater than `min_for_subclustering` and strictly less than
+    `max_for_subclustering`. The maximum defaults to 1,000,000 and must be
+    greater than the minimum.
+
     `num_workers` controls the number of subprocesses used by PyTorch's image
     DataLoader during DINOv2 embedding. Workers load and prepare image batches
     while the main process runs the model. Zero disables subprocess loading;
@@ -86,6 +91,7 @@ class PipelineConfig:
     classes_benchmark_file: Optional[Path] = None
     subclustering: bool = True
     min_for_subclustering: int = 1000
+    max_for_subclustering: int = 1_000_000
     subclustering_umap_dim: int = 60
     subclustering_umap_neighbors: int = 30
     subclustering_hdbscan_min_cluster_size: int = 7
@@ -371,6 +377,10 @@ def validate_config(cfg: PipelineConfig) -> None:
         errors.append("two_pass and fast_tune cannot both be true")
     if cfg.min_for_subclustering < 1:
         errors.append("min_for_subclustering must be >= 1")
+    if cfg.max_for_subclustering <= cfg.min_for_subclustering:
+        errors.append(
+            "max_for_subclustering must be greater than min_for_subclustering"
+        )
     if cfg.subclustering_umap_dim <= 1:
         errors.append("subclustering_umap_dim must be > 1")
     if cfg.subclustering_umap_neighbors <= 2:

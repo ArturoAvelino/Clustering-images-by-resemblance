@@ -52,6 +52,7 @@ memory_refresh_interval_seconds: 60
 # cached DINOv2 artifacts for the same images.
 subclustering: true
 min_for_subclustering: 1000
+max_for_subclustering: 1000000
 subclustering_umap_dim: 60
 subclustering_umap_neighbors: 30
 subclustering_hdbscan_min_cluster_size: 7
