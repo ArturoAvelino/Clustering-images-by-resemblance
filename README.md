@@ -377,6 +377,23 @@ Location IDs are parsed only from the filename prefix before the first
 marker, or with no prefix before the marker, are skipped and written to
 `location_IDs_not_found.csv` beside `richness.csv`.
 
+### Sample images from each cluster for download:
+
+```bash
+python clustering generate-images-sample-list \\
+  --clusters-file /path/to/clusters.csv \\
+  --output-dir /path/to/output/directory
+```
+
+This writes `file_list.txt` with paths rooted at
+`/home/ubuntu/crops/cropped/`, and `clusters_sampling.csv` with the original
+columns and sampled rows. The input is read once, with up to 100 rows per
+cluster kept in memory. Every cluster label is sampled, including `-1`; if a
+cluster has fewer than 100 rows, all its rows are included. Add `--seed 42` to
+reproduce a selection, or `--image-root /another/server/path` when images are
+stored elsewhere. Use `--sample-size` to change the number of rows selected per
+cluster.
+
 ### Generate a per-class breakdown of clusters:
 
 `clusters_summary_classes.csv` is written automatically every time the pipeline
