@@ -22,6 +22,10 @@ Usage:
     --probability 0.3 --outlier-score 0.7
   python clustering write_richness_file --clusters-file /path/to/output/clusters.csv \\
     --output-dir /path/to/output
+  python clustering generate-clusters-and-vectors-file \\
+    --clusters-file /path/to/output/clusters.csv --umap-file /path/to/output/umap.npy \\
+    --min-cluster-size 100 --max-cluster-size 1000000 \\
+    --output-dir /path/to/output
   python clustering generate-images-sample-list --clusters-file /path/to/output/clusters.csv \\
     --output-dir /path/to/sample
 """
@@ -38,6 +42,7 @@ def _print_top_level_help() -> None:
         "  python clustering copy-crops-to-subdirs-representative [options]\n"
         "  python clustering copy-crops-to-subdir-outliers [options]\n\n"
         "  python clustering write_richness_file [options]\n\n"
+        "  python clustering generate-clusters-and-vectors-file [options]\n\n"
         "  python clustering generate-images-sample-list [options]\n\n"
         "Run `python clustering <command> --help` for help with each command."
     )
@@ -77,6 +82,13 @@ def main(argv: list[str] | None = None) -> int:
 
         return write_richness_file_main(
             rest, prog="python clustering write_richness_file"
+        )
+    if command == "generate-clusters-and-vectors-file":
+        from pipeline.cluster_vectors import generate_clusters_and_vectors_file_main
+
+        return generate_clusters_and_vectors_file_main(
+            rest,
+            prog="python clustering generate-clusters-and-vectors-file",
         )
     if command == "generate-images-sample-list":
         from pipeline.image_sampling import generate_image_sample_files_main

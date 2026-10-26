@@ -67,6 +67,10 @@ python clustering compute-clusters --compute only-clustering \\
   --config /path/to/config_example_run_only_clustering.yaml
 python clustering write_richness_file --clusters-file /path/to/clusters.csv \\
   --output-dir /path/to/output
+python clustering generate-clusters-and-vectors-file \\
+  --clusters-file /path/to/clusters.csv --umap-file /path/to/umap.npy \\
+  --min-cluster-size 100 --max-cluster-size 1000000 \\
+  --output-dir /path/to/output
 python clustering copy-crops-to-subdirs-representative --clusters-file /path/to/file/clusters.csv \\
   --input-dir /path/to/images --dest-dir /path/to/clustered \\
   --probability 0.99 --outlier-score 0.001
